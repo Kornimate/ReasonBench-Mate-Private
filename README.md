@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # ReasonBENCH: Benchmarking the (In)Stability of LLM Reasoning
 
 **ReasonBENCH** is a benchmark suite and open-source library for controlled multi-run evaluation of LLM reasoning. It measures both the quality and stability of reasoning strategies by running repeated independent trials and reporting variance-aware metrics — including confidence intervals, run deviation, and global noise — rather than relying on single-run averages.
@@ -210,7 +209,3 @@ Tests use async fixtures and require valid API keys (Groq/OpenAI) for the mock L
   note={Under review at ICML}
 }
 ```
-=======
-# ReasonBench-Mate-Private
-Copy of the ReasonBench repository for private usage and thesis.
->>>>>>> 92531dad3802f0f765051b054c44cdad99152799
