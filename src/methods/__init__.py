@@ -7,3 +7,4 @@ from .react import AgentDictReact, MethodReact
 from .io import AgentDictIO, MethodIO
 from .cot import AgentDictCOT, MethodCOT
 from .cot_sc import AgentDictCoT, MethodCOT_SC
+from .reagents import AgentDictReAgents, MethodReAgents

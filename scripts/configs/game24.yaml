@@ -45,3 +45,13 @@ rap:
 
 react:
   num_steps: 10
+
+reagents:
+  num_agents: 7
+  num_steps: 7
+  k: 1
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 120

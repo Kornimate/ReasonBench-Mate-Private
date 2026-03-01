@@ -45,3 +45,13 @@ rap:
   num_evaluations: 3
   exploration_constant: 1.0
   max_depth: 10
+
+reagents:
+  num_agents: 3
+  num_steps: 9
+  k: 2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 30
