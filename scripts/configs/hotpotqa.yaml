@@ -47,11 +47,8 @@ rap:
   max_depth: 10
 
 reagents:
-  num_agents: 5
-  num_steps: 6
-  k: 1
-  backtrack: 0.5
-  resampling: "linear_filtered"
-  min_steps: 1
-  num_evaluations: 3
-  origin: 10
+  population_size: 5
+  max_steps: 6
+  adaptive_scaling: true
+  heterogeneous_agents: true
+  selection: "tournament"

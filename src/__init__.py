@@ -116,6 +116,7 @@ class MethodFactory:
             agents = {
                 "step": AgentFactory.get("act", benchmark),
                 "evaluate": AgentFactory.get("evaluate", benchmark),
+                "predict": AgentFactory.get("population", benchmark),
             }
         else:
             raise NotImplementedError(f"Method {method} is not implemented yet.")

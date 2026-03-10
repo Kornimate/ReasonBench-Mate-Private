@@ -7,6 +7,7 @@ from . import prompts as prompts
 from .state import StateHumanEval
 from ... import AgentFactory
 from ...typedefs import Request, Agent, Model, DecodingParameters
+from ...utils import build_population_prediction_prompt, parse_population_prediction
 
 @AgentFactory.register
 class AgentIoHumanEval(Agent):
@@ -97,6 +98,28 @@ class AgentActHumanEval(Agent):
         # Parse the responses
         actions = [r.strip() for r in responses]
         return actions
+
+
+@AgentFactory.register
+class AgentPopulationHumanEval(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHumanEval,
+        max_agents: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> int:
+        prompt = build_population_prediction_prompt(state, max_agents)
+        response = await model.request(
+            prompt=prompt,
+            n=1,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return parse_population_prediction(response[0], max_agents, max_agents)
 
 
 @AgentFactory.register

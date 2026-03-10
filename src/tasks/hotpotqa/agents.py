@@ -9,6 +9,7 @@ from . import prompts as prompts
 from .state import StateHotpotQA
 from ... import AgentFactory
 from ...typedefs import Agent, Model, DecodingParameters
+from ...utils import build_population_prediction_prompt, parse_population_prediction
 
 act_cache = {}
 
@@ -118,6 +119,28 @@ class AgentActHotpotQA(Agent):
         random.shuffle(proposals)
         act_cache[prompt].extend(proposals[n:])
         return proposals[:n]
+
+
+@AgentFactory.register
+class AgentPopulationHotpotQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHotpotQA,
+        max_agents: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> int:
+        prompt = build_population_prediction_prompt(state, max_agents)
+        response = await model.request(
+            prompt=prompt,
+            n=1,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return parse_population_prediction(response[0], max_agents, max_agents)
 
 
 @AgentFactory.register
