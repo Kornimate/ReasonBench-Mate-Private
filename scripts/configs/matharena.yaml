@@ -17,6 +17,39 @@ foa:
   num_evaluations: 3
   origin: 30
 
+het_foa:
+  num_agents: 3
+  num_steps: 9
+  k: 2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 30
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "cot"
+      num_agents: 1
+
+new_algo:
+  width: 4
+  num_steps: 6
+  max_value: 10
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 30
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "cot"
+      num_agents: 2
+
 tot_bfs:
   num_selections: 3
   num_steps: 6

@@ -1,5 +1,6 @@
 pandas
 diskcache
+deepdiff
 omegaconf
 together
 openai

@@ -71,12 +71,45 @@ class MethodFactory:
 
     @classmethod
     def register(cls, method_cls):
-        cls.registry[method_cls.__name__.lower()] = method_cls
+        key = method_cls.__name__.lower()
+        cls.registry[key] = method_cls
+        cls.registry[key.replace("_", "")] = method_cls
         return method_cls
+
+    @classmethod
+    def _build_step_agent_specs(
+        cls,
+        benchmark: str,
+        params: DecodingParameters,
+        config,
+        default_agent_type: str,
+        default_count: int,
+    ):
+        step_agent_configs = getattr(config, "step_agents", None)
+        if not step_agent_configs:
+            return [
+                {
+                    "agent": AgentFactory.get(default_agent_type, benchmark),
+                    "params": params,
+                    "num_agents": int(default_count),
+                }
+            ]
+
+        specs = []
+        for step_agent_config in step_agent_configs:
+            specs.append(
+                {
+                    "agent": AgentFactory.get(step_agent_config.get("agent_type", default_agent_type), benchmark),
+                    "params": params,
+                    "num_agents": int(step_agent_config.get("num_agents", 1)),
+                }
+            )
+        return specs
 
     @classmethod
     def get(cls, method: str, benchmark: str, params: DecodingParameters, *args, **kwargs):
         key = f"method{method}".lower()
+        config = kwargs.get("config")
 
         
         if method == "io":
@@ -118,13 +151,47 @@ class MethodFactory:
                 "evaluate": AgentFactory.get("evaluate", benchmark),
                 "predict": AgentFactory.get("population", benchmark),
             }
+        elif method == "het_foa":
+            agents = {
+                "evaluate": AgentFactory.get("evaluate", benchmark),
+                "step_agents": cls._build_step_agent_specs(
+                    benchmark=benchmark,
+                    params=params,
+                    config=config,
+                    default_agent_type="act",
+                    default_count=getattr(config, "num_agents", 1),
+                ),
+            }
+        elif method == "new_algo":
+            agents = {
+                "evaluate": AgentFactory.get("evaluate", benchmark),
+                "step_agents": cls._build_step_agent_specs(
+                    benchmark=benchmark,
+                    params=params,
+                    config=config,
+                    default_agent_type="act",
+                    default_count=getattr(config, "width", 1),
+                ),
+                "difficulty_agent": (
+                    {
+                        "agent": AgentFactory.get(getattr(config, "difficulty_agent_type", "population"), benchmark),
+                        "params": params,
+                    }
+                    if getattr(config, "difficulty_agent_type", None)
+                    else None
+                ),
+            }
         else:
             raise NotImplementedError(f"Method {method} is not implemented yet.")
         
         # For the moment, only supporting same params for all agents
-        agents.update({k+"_params": params for k in agents.keys()})
+        agents.update({k+"_params": params for k in agents.keys() if k not in ["step_agents", "difficulty_agent"]})
 
         try:
             return cls.registry[key](agents=agents, *args, **kwargs)
         except KeyError:
-            raise ValueError(f"No method found for name={method}")
+            fallback_key = key.replace("_", "")
+            try:
+                return cls.registry[fallback_key](agents=agents, *args, **kwargs)
+            except KeyError:
+                raise ValueError(f"No method found for name={method}")

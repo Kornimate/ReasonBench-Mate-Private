@@ -53,7 +53,7 @@ class StateMathArena(State):
         }
 
     # Required abstract methods from State class
-    def clone(self):
+    def clone(self, randomness: int = None):
         """Required by State: Returns a deep copy"""
         return self.copy()
 

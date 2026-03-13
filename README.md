@@ -19,7 +19,7 @@ Key findings from our evaluation:
 
 ## Reasoning Strategies
 
-We implement 10 representative reasoning strategies using a standardized interface:
+We implement 12 representative reasoning strategies using a standardized interface:
 
 | Strategy | Type | Reference |
 |----------|------|-----------|
@@ -33,6 +33,8 @@ We implement 10 representative reasoning strategies using a standardized interfa
 | **GoT** | Structured | Besta et al., 2024 |
 | **RAP** | Planning | Hao et al., 2023 |
 | **FoA** | Evolutionary | Klein et al., 2025 |
+| **Het-FoA** | Evolutionary | `shoan-main` heterogeneous fleet variant |
+| **New-Algo** | Evolutionary | `shoan-main` adaptive prior / width variant |
 
 ## Benchmarks
 
@@ -68,11 +70,7 @@ We implement 10 representative reasoning strategies using a standardized interfa
 pip install -r requirements.txt
 ```
 
-You also need [CacheSaver](https://github.com/au-clan/cachesaver) — a client-side inference optimization framework for efficient, affordable, and reproducible LLM inference:
-
-```bash
-pip install cachesaver
-```
+This repository now vendors the `cachesaver` core that was provided in the `shoan-main (1).zip` reference project, so you do not need a separate `pip install cachesaver`.
 
 Set your API keys as environment variables:
 
@@ -117,11 +115,35 @@ python scripts/simple/simple.py \
 | Argument | Description |
 |----------|-------------|
 | `--benchmark` | Task name: `game24`, `humaneval`, `hotpotqa`, `scibench`, `hle`, `sonnetwriting` |
-| `--method` | Reasoning method: `io`, `cot`, `cot_sc`, `foa`, `tot_bfs`, `tot_dfs`, `got`, `react`, `rap` |
+| `--method` | Reasoning method: `io`, `cot`, `cot_sc`, `foa`, `het_foa`, `new_algo`, `tot_bfs`, `tot_dfs`, `got`, `react`, `rap`, `reagents` |
 | `--split` | Dataset split: `train`, `validation`, `test`, `mini` |
 | `--provider` | LLM provider: `openai`, `gemini`, `anthropic`, `groq`, `together` |
 | `--model` | Model identifier (e.g., `gpt-4.1-nano`, `claude-haiku-4-5`) |
-| `--ns_ratio` | Namespace ratio (0.0–1.0) for controlling parallel execution |
+| `--ns_ratio` | Namespace ratio (0.0—1.0) for controlling parallel execution |
+
+## Zip Integration Notes
+
+The `shoan-main (1).zip` reference project overlaps with this repository in a very specific way:
+
+- The current repository is the main ReasonBENCH codebase: benchmarks, methods, tasks, models, scripts, and tests all live here.
+- The zip contributes the reusable `cachesaver` runtime pieces, plus extra reference material such as ablation outputs and legacy examples.
+- The runtime-relevant part has been integrated directly into this repo under `cachesaver/`, and the existing scripts and tests continue to import it as `from cachesaver ...`.
+
+### What was integrated
+
+- `cachesaver/` now contains the async batching, caching, deduplication, reordering, and pipeline code derived from the zip.
+- The local `Request` type was adapted to support both the zip's simple request style and this repository's current `args`/`kwargs` request style used by `src/models/api.py`.
+- `requirements.txt` now includes `deepdiff`, which is required by both the integrated `cachesaver` hashing logic and the existing API accounting code.
+
+### About `src/methods/cot_sc.py`
+
+`src/methods/cot_sc.py` already belongs to the current repository and does not have a direct counterpart inside the zip. Its role is to:
+
+- sample `n` chain-of-thought completions through the shared model API,
+- majority-vote the returned actions,
+- apply the selected action once through the environment.
+
+That means the zip does not replace `CoT-SC`; it strengthens the infrastructure underneath it by supplying the local `cachesaver` pipeline that the rest of the repository already expects.
 
 ## Evaluation Metrics
 
@@ -165,6 +187,7 @@ ReasonBENCH is organized around four core abstractions:
 - **Environment** — formalizes task-specific dynamics: state transitions, action validation, terminal conditions, and evaluation.
 - **Agent** — defines the interface between methods, models, and states. Agents construct prompts, issue queries, and parse responses into actions.
 - **Model** — uniform interface for LLM providers, supporting async execution and integrated with CacheSaver for response caching and deduplication.
+- **CacheSaver** — vendored async request pipeline for batching, caching, deduplication, and deterministic reordering, integrated from the `shoan-main` reference zip.
 
 ```
 src/
@@ -178,6 +201,15 @@ src/
 ├── __init__.py      # Factory registrations
 ├── typedefs.py      # Core ABCs and type definitions
 └── utils.py         # Logging and utility functions
+
+cachesaver/
+├── batching.py      # Async request batching
+├── caching.py       # Namespace-aware response reuse
+├── deduplicator.py  # Duplicate prompt collapsing
+├── pipelines.py     # Online/local pipeline composition
+├── reordering.py    # Deterministic request ordering
+├── typedefs.py      # Request / Response / protocol types
+└── resource_managers/
 
 scripts/
 ├── simple/          # Single-run experiment scripts
