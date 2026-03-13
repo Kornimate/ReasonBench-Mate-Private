@@ -6,7 +6,7 @@ from . import prompts as prompts
 from .state import StateSonnetWriting
 from ... import AgentFactory
 from ...typedefs import Agent, Model, DecodingParameters
-from ...utils import remove_parentheses
+from ...utils import remove_parentheses, build_population_prediction_prompt, parse_population_prediction
 
 
 @AgentFactory.register
@@ -85,6 +85,28 @@ class AgentActSonnetWriting(Agent):
         # Parse responses
         proposals = [r.strip() for r in responses]
         return proposals
+
+
+@AgentFactory.register
+class AgentPopulationSonnetWriting(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateSonnetWriting,
+        max_agents: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> int:
+        prompt = build_population_prediction_prompt(state, max_agents)
+        response = await model.request(
+            prompt=prompt,
+            n=1,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return parse_population_prediction(response[0], max_agents, max_agents)
     
 @AgentFactory.register
 class AgentBfsSonnetWriting(Agent):

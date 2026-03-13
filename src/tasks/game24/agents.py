@@ -7,6 +7,7 @@ from . import prompts as prompts
 from .state import StateGame24
 from ... import AgentFactory
 from ...typedefs import Request, Agent, Model, DecodingParameters
+from ...utils import build_population_prediction_prompt, parse_population_prediction
 
 act_cache = {}
 
@@ -115,6 +116,28 @@ class AgentActGame24(Agent):
         if state.current_state == "24":
             act_cache[prompt].extend(proposals[n:])
         return proposals[:n]
+
+
+@AgentFactory.register
+class AgentPopulationGame24(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateGame24,
+        max_agents: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> int:
+        prompt = build_population_prediction_prompt(state, max_agents)
+        response = await model.request(
+            prompt=prompt,
+            n=1,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return parse_population_prediction(response[0], max_agents, max_agents)
     
 
 @AgentFactory.register

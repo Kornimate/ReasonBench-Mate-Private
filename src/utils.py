@@ -428,3 +428,24 @@ def remove_parentheses(text: str) -> str:
     cleaned = re.sub(r"(\n)[ \t]+", r"\1", cleaned)   # spaces after newline
     cleaned = cleaned.strip()
     return cleaned
+
+
+def build_population_prediction_prompt(state: Any, max_agents: int) -> str:
+    serialized_state = state.serialize() if hasattr(state, "serialize") else str(state)
+    return (
+        "You are configuring a population-based reasoning system.\n"
+        "Estimate how many agents should be used initially for this specific problem.\n"
+        f"Choose a single integer between 1 and {max_agents}.\n"
+        "Use fewer agents for straightforward problems and more agents for difficult or ambiguous ones.\n"
+        "Return only the integer.\n\n"
+        f"Problem state:\n{serialized_state}"
+    )
+
+
+def parse_population_prediction(response: str, max_agents: int, default: int) -> int:
+    matches = re.findall(r"\d+", response)
+    if not matches:
+        return default
+
+    prediction = int(matches[0])
+    return max(1, min(max_agents, prediction))
