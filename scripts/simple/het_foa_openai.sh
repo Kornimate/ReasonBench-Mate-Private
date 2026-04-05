@@ -1,12 +1,12 @@
 #!/bin/bash
 
-benchmark="game24"
-method="reagents"
+benchmark="scibench"
+method="het_foa"
 split="mini"
 
-provider="gemini"
-api_key="GEMINI_API_KEY_CLAN"
-model="gemini-2.0-flash"
+provider="openai"
+api_key="OPENAI_API_KEY"
+model="gpt-4.1-nano"
 
 # Decoding parameters
 source scripts/configs/$benchmark.env
