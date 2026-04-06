@@ -1,6 +1,6 @@
 $benchmark = "mtsamples"
-$method = "foa"
-$split = "single"
+$method = "reagents"
+$split = "mini"
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY"
