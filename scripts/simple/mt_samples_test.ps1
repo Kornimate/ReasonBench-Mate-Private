@@ -1,5 +1,5 @@
 $benchmark = "mtsamples"
-$method = "reagents"
+$method = "tot_dfs"
 $split = "mini"
 
 $provider = "openai"

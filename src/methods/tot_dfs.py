@@ -32,8 +32,8 @@ class MethodTOT_DFS(Method):
         self.num_steps = config.num_steps
         self.num_evaluations = config.num_evaluations
 
-        self.pruning_threshold = config.pruning_threshold or None
-        self.max_iterations = config.max_iterations or None
+        self.pruning_threshold = config.get("pruning_threshold", None)
+        self.max_iterations = config.get("max_iterations", None)
 
         """
         max_iterations: Attempts Unique branches
@@ -153,7 +153,7 @@ class MethodTOT_DFS(Method):
             sorted_pairs = sorted(state_value_pairs, key=lambda x: x[1], reverse=True)
 
             for state2, value in sorted_pairs[:self.num_selections]:
-                if self.pruning_threshold is not None and value > self.pruning_threshold:
+                if self.pruning_threshold is None or value > self.pruning_threshold:
                     if await dfs([state2], t + 1): # Go one step deeper in the DFS search
                         return True
             return False
