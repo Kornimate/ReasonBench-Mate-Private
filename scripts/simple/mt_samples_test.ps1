@@ -1,5 +1,5 @@
 $benchmark = "mtsamples"
-$method = "het_foa"
+$method = "foa"
 $split = "single"
 
 $provider = "openai"
