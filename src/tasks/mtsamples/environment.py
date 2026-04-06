@@ -57,7 +57,6 @@ class EnvironmentMTSamples(Environment):
             current_state=cleaned_action,
             steps=state.steps + [cleaned_action],
             answer=state.answer,
-            section_name=state.section_name,
             title=state.title,
             source_id=state.source_id,
             note_text=state.note_text,

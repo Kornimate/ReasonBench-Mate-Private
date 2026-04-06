@@ -10,7 +10,6 @@ class StateMTSamples(State):
     current_state: str
     steps: List[str]
     answer: str
-    section_name: str
     title: str
     source_id: str
     note_text: str
@@ -21,7 +20,6 @@ class StateMTSamples(State):
     def serialize(self) -> dict:
         return {
             "title": self.title,
-            "section_name": self.section_name,
             "current_state": self.current_state,
             "steps": " -> ".join(self.steps),
         }
@@ -32,7 +30,6 @@ class StateMTSamples(State):
             current_state=self.current_state,
             steps=self.steps,
             answer=self.answer,
-            section_name=self.section_name,
             title=self.title,
             source_id=self.source_id,
             note_text=self.note_text,

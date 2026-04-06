@@ -31,7 +31,6 @@ def parse_candidate_drafts(response: str) -> List[str]:
 def build_prompt(template: str, state: StateMTSamples, current_draft: str = "None yet.") -> str:
     return template.format(
         title=state.title,
-        section_name=state.section_name,
         note_text=state.note_text,
         current_draft=current_draft or "None yet.",
     )
@@ -50,7 +49,6 @@ class AgentIoMTSamples(Agent):
     ) -> List[str]:
         prompt = prompts.io.format(
             title=state.title,
-            section_name=state.section_name,
             note_text=state.note_text,
         )
         responses = await model.request(
@@ -76,7 +74,6 @@ class AgentCotMTSamples(Agent):
     ) -> List[str]:
         prompt = prompts.cot.format(
             title=state.title,
-            section_name=state.section_name,
             note_text=state.note_text,
         )
         responses = await model.request(
@@ -174,7 +171,6 @@ class AgentAggregateMTSamples(Agent):
         )
         prompt = prompts.aggregate.format(
             title=state.title,
-            section_name=state.section_name,
             note_text=state.note_text,
             actions=action_block,
             k=k,
@@ -234,7 +230,6 @@ class AgentEvaluateMTSamples(Agent):
 
         prompt = prompts.evaluate.format(
             title=state.title,
-            section_name=state.section_name,
             note_text=state.note_text,
             current_draft=state.current_state or "No draft yet.",
         )
@@ -271,7 +266,6 @@ class AgentSelfEvaluateMTSamples(Agent):
             return cache[cache_key]
 
         prompt = prompts.self_evaluate_step.format(
-            section_name=state.section_name,
             note_text=state.note_text,
             draft=state.current_state or "No draft yet.",
         )

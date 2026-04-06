@@ -1,5 +1,4 @@
 import random
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -62,31 +61,18 @@ def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
             or f"mtsamples_{idx}"
         )
 
-        requested_section = "UNKNOWN"
-        section_match = re.search(
-            r"missing section\s*:\s*(PLAN|SUMMARY|FINDINGS)",
-            prompt_text,
-            flags=re.IGNORECASE,
+        note_marker = "\nNote:"
+        note_index = prompt_text.lower().find(note_marker.lower())
+        extracted_note_text = (
+            prompt_text[note_index + len(note_marker):].strip()
+            if note_index != -1
+            else prompt_text
         )
-        if section_match:
-            requested_section = section_match.group(1).upper()
-        else:
-            answer_prefix_match = re.match(
-                r"^\s*(PLAN|SUMMARY|FINDINGS)\s*:\s*",
-                answer,
-                flags=re.IGNORECASE,
-            )
-            if answer_prefix_match:
-                requested_section = answer_prefix_match.group(1).upper()
-
-        note_match = re.search(r"\bNote:\s*(.*)$", prompt_text, flags=re.IGNORECASE | re.DOTALL)
-        extracted_note_text = note_match.group(1).strip() if note_match else prompt_text
 
         instances.append(
             {
                 "id": str(title),
                 "title": str(title),
-                "section_name": requested_section,
                 "note_text": extracted_note_text,
                 "answer": answer,
                 "puzzle": prompt_text,
@@ -143,7 +129,6 @@ class BenchmarkMTSamples(Benchmark):
             current_state="",
             steps=[],
             answer=sample["answer"],
-            section_name=sample["section_name"],
             title=sample["title"],
             source_id=sample["id"],
             note_text=sample["note_text"],
