@@ -1,11 +1,12 @@
 import random
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .state import StateMTSamples
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from helm.benchmark.scenarios.mtsamples_procedures_scenario import MTSamplesProceduresScenario
 
 
 SECTION_PRIORITY = ("PLAN", "SUMMARY", "FINDINGS")
@@ -87,32 +88,90 @@ def build_task_prompt(title: str, section_name: str, note_text: str) -> str:
     )
 
 
-def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
+def _get_nested_attr(obj: Any, attr_path: str, default: Any = None) -> Any:
+    current = obj
+    for attr in attr_path.split("."):
+        current = getattr(current, attr, default)
+        if current is default:
+            return default
+    return current
+
+
+def _coerce_reference_text(instance: Any) -> str:
+    references = _get_nested_attr(instance, "references", None)
+    if references:
+        parts = []
+        for reference in references:
+            text = getattr(reference, "output", None)
+            text = getattr(text, "text", None) if text is not None else getattr(reference, "text", "")
+            if text:
+                parts.append(str(text).strip())
+        if parts:
+            return "\n".join(parts).strip()
+
+    output_text = _get_nested_attr(instance, "output.text", None)
+    if output_text:
+        return str(output_text).strip()
+
+    first_ref = _get_nested_attr(instance, "first_correct_reference.output.text", None)
+    if first_ref:
+        return str(first_ref).strip()
+
+    return ""
+
+
+def load_instances_from_helm_scenario(dataset_dir: Path) -> List[Dict[str, str]]:
+    
+    scenario = MTSamplesProceduresScenario()
+    helm_instances = scenario.get_instances(str(dataset_dir))
+
     instances: List[Dict[str, str]] = []
-    for path in sorted(dataset_dir.glob("*.txt")):
-        raw_text = path.read_text(encoding="utf-8", errors="ignore")
-        parsed = extract_reference_section(raw_text)
-        if parsed is None:
+    for idx, instance in enumerate(helm_instances):
+        note_text = _get_nested_attr(instance, "input.text", None)
+        answer = _coerce_reference_text(instance)
+
+        if not note_text or not answer:
             continue
 
-        source_text = remove_span(raw_text, parsed["span_start"], parsed["span_end"])
-        if not source_text:
-            continue
+        prompt_text = str(note_text).strip()
+        title = (
+            _get_nested_attr(instance, "id", None)
+            or _get_nested_attr(instance, "split", None)
+            or f"mtsamples_{idx}"
+        )
 
-        title = path.stem
-        section_name = parsed["canonical_label"]
-        answer = parsed["content"]
+        requested_section = "UNKNOWN"
+        section_match = re.search(
+            r"missing section\s*:\s*(PLAN|SUMMARY|FINDINGS)",
+            prompt_text,
+            flags=re.IGNORECASE,
+        )
+        if section_match:
+            requested_section = section_match.group(1).upper()
+        else:
+            answer_prefix_match = re.match(r"^\s*(PLAN|SUMMARY|FINDINGS)\s*:\s*", answer, flags=re.IGNORECASE)
+            if answer_prefix_match:
+                requested_section = answer_prefix_match.group(1).upper()
+
+        note_match = re.search(r"\bNote:\s*(.*)$", prompt_text, flags=re.IGNORECASE | re.DOTALL)
+        extracted_note_text = note_match.group(1).strip() if note_match else prompt_text
+
         instances.append(
             {
-                "id": str(path.name),
-                "title": title,
-                "section_name": section_name,
-                "note_text": source_text,
+                "id": str(title),
+                "title": str(title),
+                "section_name": requested_section,
+                "note_text": extracted_note_text,
                 "answer": answer,
-                "puzzle": build_task_prompt(title, section_name, source_text),
+                "puzzle": prompt_text or build_task_prompt(str(title), requested_section, extracted_note_text),
             }
         )
+
     return instances
+
+
+def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
+    return load_instances_from_helm_scenario(dataset_dir)
 
 
 def split_instances(instances: List[Dict[str, str]], split: str) -> List[Dict[str, str]]:
