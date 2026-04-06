@@ -72,7 +72,10 @@ class EnvironmentMTSamples(Environment):
 
     @staticmethod
     def is_final(state: StateMTSamples) -> bool:
-        return bool(state.steps)
+        if not state.steps:
+            return False
+        score = token_f1(state.current_state, state.answer)
+        return score >= 0.999
 
     @staticmethod
     def evaluate(state: StateMTSamples) -> Tuple[bool, float]:
