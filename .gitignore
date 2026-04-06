@@ -12,3 +12,5 @@ secret.py
 __pycache__
 .nfs*
 datasets/dataset_wildchat.csv.gz
+
+mtsamples_procedures/

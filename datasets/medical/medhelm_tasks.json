@@ -1,0 +1,6 @@
+{
+  "mtsamples_procedures": {
+    "class_name": "helm.benchmark.scenarios.mtsamples_procedures_scenario.MTSamplesProceduresScenario",
+    "args": {}
+  }
+}
