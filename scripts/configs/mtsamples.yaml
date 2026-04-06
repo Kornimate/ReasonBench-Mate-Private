@@ -1,0 +1,87 @@
+io:
+  n: 1
+
+cot:
+  n: 1
+
+cot_sc:
+  n: 10
+
+foa:
+  num_agents: 3
+  num_steps: 6
+  k: 2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 20
+
+het_foa:
+  num_agents: 3
+  num_steps: 6
+  k: 2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 20
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 1
+
+new_algo:
+  width: 4
+  num_steps: 6
+  max_value: 10
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 20
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 2
+
+tot_bfs:
+  num_selections: 3
+  num_steps: 5
+  num_evaluations: 3
+
+tot_dfs:
+  num_selections: 3
+  num_steps: 5
+  num_evaluations: 3
+  pruning_threshold: 0
+  max_iterations: 8
+
+got:
+  num_selections: 3
+  num_steps: 5
+  num_generate: 5
+  num_evaluations: 3
+  num_best: 2
+
+react:
+  num_steps: 8
+
+rap:
+  num_iterations: 10
+  num_samples: 5
+  num_evaluations: 3
+  exploration_constant: 1.0
+  max_depth: 8
+
+reagents:
+  population_size: 5
+  max_steps: 6
+  adaptive_scaling: true
+  heterogeneous_agents: true
+  selection: "tournament"
