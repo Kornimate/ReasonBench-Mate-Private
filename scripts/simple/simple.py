@@ -99,6 +99,10 @@ async def run(args, trial, cache_path):
     evaluations = [sorted([environment.evaluate(state) for state in r], key=lambda x: x[1]) for r in results]
     final_logging(logger, api, clocktime, durations, evaluations)
 
+    for sample_idx, sample_evaluations in enumerate(evaluations):
+        solved, score = sample_evaluations[-1]
+        print(f"Sample {sample_idx}: solved={solved} score={score:.6f}")
+
 
 
 if __name__ == "__main__":

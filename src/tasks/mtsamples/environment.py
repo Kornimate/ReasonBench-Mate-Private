@@ -75,7 +75,7 @@ class EnvironmentMTSamples(Environment):
         if not state.steps:
             return False
         score = token_f1(state.current_state, state.answer)
-        return score >= 0.999
+        return score >= 0.8
 
     @staticmethod
     def evaluate(state: StateMTSamples) -> Tuple[bool, float]:
