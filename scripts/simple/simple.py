@@ -30,7 +30,11 @@ async def run(args, trial, cache_path):
     cache = Cache(cache_path)
 
     # Model
-    model = OnlineLLM(provider=args.provider, api_key=args.api_key)
+    model = OnlineLLM(
+        provider=args.provider,
+        api_key=args.api_key,
+        reasoning_effort=args.reasoning_effort,
+    )
 
     # Pipeline
     pipeline = OnlineAPI(
@@ -51,7 +55,7 @@ async def run(args, trial, cache_path):
 
     # Decoding Parameters
     params = DecodingParameters(
-        temperature=args.temperature,
+        temperature=1.0 if args.model.startswith("gpt-5") else args.temperature,
         max_completion_tokens=args.max_completion_tokens,
         top_p=args.top_p,
         stop=args.stop,
@@ -117,6 +121,7 @@ if __name__ == "__main__":
     parser.add_argument("--provider", type=str)
     parser.add_argument("--api_key", type=str)
     parser.add_argument("--model", type=str)
+    parser.add_argument("--reasoning_effort", type=str, default=None)
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--max_completion_tokens", type=int)
     parser.add_argument("--top_p", type=float)

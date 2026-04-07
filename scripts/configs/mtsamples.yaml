@@ -5,7 +5,7 @@ cot:
   n: 1
 
 cot_sc:
-  n: 10
+  n: 8
 
 foa:
   num_agents: 3

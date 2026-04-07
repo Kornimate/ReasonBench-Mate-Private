@@ -85,6 +85,11 @@ def tokens2cost(tokens: dict, model_name: str) -> dict:
         "gpt-5-mini": {"in": 0.25, "out": 2.00},
         "gpt-5": {"in": 1.25, "out": 10.00},
 
+        # GPT-5.4 models
+        "gpt-5.4-nano": {"in": 0.2, "out": 1.25},
+        "gpt-5.4-mini": {"in": 0.75, "out": 4.50},
+        "gpt-5.4": {"in": 2.5, "out": 15},
+
         # DeepSeek models (Together AI)
         "deepseek-ai/DeepSeek-V3": {"in": 1.25, "out": 1.25},
         "deepseek-ai/DeepSeek-R1": {"in": 3.00, "out": 7.00},

@@ -1,10 +1,10 @@
 $benchmark = "mtsamples"
-$method = "tot_dfs"
+$method = "new_algo"
 $split = "mini"
 
 $provider = "openai"
-$apiKey = "OPENAI_API_KEY"
-$model = "gpt-4.1-nano"
+$apiKey = "OPENAI_API_KEY_CLAN"
+$model = "gpt-5-nano"
 
 $configPath = Join-Path "scripts/configs" "$benchmark.env"
 Get-Content -Path $configPath | ForEach-Object {
@@ -18,6 +18,10 @@ Get-Content -Path $configPath | ForEach-Object {
 
 if ($method -in @("io", "cot")) {
     $MAX_COMPLETION_TOKENS = 10000
+}
+
+if ($benchmark -eq "mtsamples" -and $model -like "gpt-5*") {
+    $MAX_COMPLETION_TOKENS = [Math]::Max([int]$MAX_COMPLETION_TOKENS, 3000)
 }
 
 $pythonArgs = @(
