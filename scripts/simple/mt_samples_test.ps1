@@ -1,5 +1,5 @@
 $benchmark = "mtsamples"
-$method = "new_algo"
+$method = "tot_dfs"
 $split = "mini"
 
 $provider = "openai"

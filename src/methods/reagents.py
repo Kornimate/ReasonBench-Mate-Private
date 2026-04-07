@@ -7,6 +7,8 @@ from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, St
 from .. import MethodFactory, AgentDictFactory
 logger = logging.getLogger(__name__)
 
+# THIS IS JUST EXPERIMENTAL AND NOT JUSTIFIED
+
 @AgentDictFactory.register
 class AgentDictReAgents(TypedDict):
     step: Agent # ActAgent
