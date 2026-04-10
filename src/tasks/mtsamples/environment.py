@@ -17,7 +17,7 @@ from ...typedefs import Environment, MAX_SEED
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY_CLAN") or os.getenv("OPENAI_API_KEY"), timeout=300, max_retries=1)
 cache = Cache(".cache/mtsamples_jury_cache")
 
-JUDGE_MODEL = os.getenv("MTSAMPLES_JUDGE_MODEL", os.getenv("HLE_JUDGE_MODEL", "o3-mini"))
+JUDGE_MODEL = os.getenv("MTSAMPLES_JUDGE_MODEL", "gpt-4.1-nano")
 JURY_SIZE = int(os.getenv("MTSAMPLES_JURY_SIZE", "3")) # if specified other way but standard is 3 based on MedHelm description
 MAX_LIKERT_SCORE = 5.0
 
