@@ -138,3 +138,37 @@ Is this draft faithful to the note and appropriate as the missing text? Answer w
 """
 
 self_evaluate_answer = self_evaluate_step
+
+# based on https://arxiv.org/pdf/2505.23802 -> open-ended evaluation with a jury prompt
+JURY_PROMPT = """You are a medical expert tasked with evaluating the quality of generated missing text for a procedure-related medical note.
+Your goal is to assess how well the generated text captures the clinical information from the note and compare it to the reference text (gold standard) only when needed.
+
+The procedure note title will be provided in these tags:
+<title>{title}</title>
+
+The source note will be provided in these tags:
+<note>{note_text}</note>
+
+The generated missing text will be provided in these tags:
+<response>{response}</response>
+
+The reference missing text will be provided in these tags:
+<gold_response>{gold_response}</gold_response>
+
+Carefully review the <response> based on the <note> and compare it to the <gold_response> when needed.
+For each of the following criteria, rate the response on a scale of 1 to 5 (1 = very poor, 5 = excellent), and provide a short justification for your score.
+
+Evaluation Criteria:
+Accuracy (1-5) - Does the response provide correct clinical information based on the note?
+Completeness (1-5) - Does the response include all important medical details needed for the missing text?
+Clarity (1-5) - Is the response written clearly and organized in an appropriate clinical style?
+
+Output Format:
+Output the evaluation as a single valid JSON object matching the following structure:
+{{"accuracy":{{"score":1,"explanation":"Explain why this score was given."}},"completeness":{{"score":1,"explanation":"Explain why this score was given."}},"clarity":{{"score":1,"explanation":"Explain why this score was given."}}}}
+
+Ensure the output is valid JSON:
+- Use double quotes for all keys and string values.
+- When quoting text or sections inside the explanations, use escaped double quotes to maintain valid JSON formatting.
+- Do not include any additional information in the output.
+"""
