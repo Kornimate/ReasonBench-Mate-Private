@@ -1,7 +1,0 @@
-models:
-  primary:
-    env_var: OPENAI_API_KEY_CLAN
-  jury:
-    env_var1: OPENAI_API_KEY_CLAN
-    env_var2: OPENAI_API_KEY_CLAN
-    env_var3: OPENAI_API_KEY_CLAN

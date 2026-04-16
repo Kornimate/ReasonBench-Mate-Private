@@ -102,6 +102,11 @@ class Environment(ABC):
     @abstractmethod
     def evaluate(state: State) -> Tuple[bool, float]:
         pass
+    
+    # implementations added in each environment that uses it (so no @abstractmethod here)
+    @staticmethod
+    def add_jury_evaluation(jury_models_info: List[dict]) -> None:
+        pass
 
 class Agent(ABC):
 

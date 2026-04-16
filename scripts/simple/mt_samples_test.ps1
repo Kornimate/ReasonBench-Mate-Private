@@ -6,6 +6,8 @@ $provider = "openai"
 $apiKey = "OPENAI_API_KEY_CLAN"
 $model = "gpt-5-nano"
 
+$modelsConfigPath = "models_config.yaml"
+
 $configPath = Join-Path "scripts/configs" "$benchmark.env"
 Get-Content -Path $configPath | ForEach-Object {
     if ($_ -match '^\s*#' -or $_ -match '^\s*$') {
@@ -29,6 +31,7 @@ $pythonArgs = @(
     "--benchmark", $benchmark
     "--method", $method
     "--model", $model
+    "--model_config_path", $modelsConfigPath
     "--batch_size", "1"
     "--timeout", "2.0"
     "--temperature", $TEMPERATURE

@@ -1,4 +1,7 @@
-from typing import Dict, Optional, Set
+# Python Prompt Template
+
+```python
+from typing import Dict, Set
 
 ############################# MTSAMPLES PROMPT TEMPLATE #############################
 JURY_PROMPT_TEMPLATE = """You are a medical expert tasked with evaluating the quality of a
@@ -68,3 +71,4 @@ JURY_ANNOTATION_CRITERIA: Dict[str, Set[str]] = {
 LLM_TASK_PROMPT="""Here are information about a patient, return a reasonable treatment plan for the patient.
 Patient Notes: {cleaned_text}
 Answer: """
+```
