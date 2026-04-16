@@ -19,7 +19,7 @@ cache = Cache(".cache/mtsamples_jury_cache")
 
 JUDGE_MODEL = os.getenv("MTSAMPLES_JUDGE_MODEL", "gpt-4.1-nano")
 JURY_SIZE = int(os.getenv("MTSAMPLES_JURY_SIZE", "3")) # if specified other way but standard is 3 based on MedHelm description
-MAX_LIKERT_SCORE = 5.0
+MAX_LIKERT_SCORE = 5.0 # based on MTSamples evaluation criteria
 
 
 def clean_generation(text: str) -> str:
@@ -94,11 +94,11 @@ class EnvironmentMTSamples(Environment):
 
 
 def evaluate_with_jury(state: StateMTSamples) -> float:
+    question = f"Procedure note title: {state.title}\n\nSource note:\n{state.note_text}"
     prompt = JURY_PROMPT.format(
-        title=state.title,
-        note_text=state.note_text,
-        response=state.current_state,
-        gold_response=state.answer,
+        QUESTION=question,
+        RESPONSE=state.current_state,
+        GOLD_RESPONSE=state.answer,
     )
     key = prompt_cache_key(prompt)
     cached_score = cache.get(key)
