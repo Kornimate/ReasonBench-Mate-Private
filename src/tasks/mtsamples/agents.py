@@ -28,13 +28,13 @@ def parse_candidate_drafts(response: str) -> List[str]:
     return [line for line in fallback if line]
 
 
-def parse_cleaned_text(state: StateMTSamples) -> str:
+def format_cleaned_text(state: StateMTSamples) -> str:
     return f"\n{state.note_text}"
 
 
 def build_prompt(template: str, state: StateMTSamples, current_draft: str = "None yet.") -> str:
     return template.format(
-        cleaned_text=parse_cleaned_text(state),
+        cleaned_text=format_cleaned_text(state),
         current_draft=current_draft or "None yet.",
     )
 
@@ -51,7 +51,7 @@ class AgentIoMTSamples(Agent):
         params: DecodingParameters,
     ) -> List[str]:
         prompt = prompts.io.format(
-            cleaned_text=parse_cleaned_text(state),
+            cleaned_text=format_cleaned_text(state),
         )
         responses = await model.request(
             prompt=prompt,
@@ -75,7 +75,7 @@ class AgentCotMTSamples(Agent):
         params: DecodingParameters,
     ) -> List[str]:
         prompt = prompts.cot.format(
-            cleaned_text=parse_cleaned_text(state),
+            cleaned_text=format_cleaned_text(state),
         )
         responses = await model.request(
             prompt=prompt,
@@ -171,7 +171,7 @@ class AgentAggregateMTSamples(Agent):
             f"{idx + 1}. {action}" for idx, action in enumerate(actions)
         )
         prompt = prompts.aggregate.format(
-            cleaned_text=parse_cleaned_text(state),
+            cleaned_text=format_cleaned_text(state),
             actions=action_block,
             k=k,
         )
@@ -229,7 +229,7 @@ class AgentEvaluateMTSamples(Agent):
             return cache[cache_key]
 
         prompt = prompts.evaluate.format(
-            cleaned_text=parse_cleaned_text(state),
+            cleaned_text=format_cleaned_text(state),
             current_draft=state.current_state or "No draft yet.",
         )
         responses = await model.request(
