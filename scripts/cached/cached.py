@@ -29,8 +29,17 @@ async def run(args, trial, cache_path):
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
     cache = Cache(cache_path)
 
+    model_config = None
+    if os.path.exists(os.path.join(os.getcwd(), args.model_config_path)):
+        model_config = OmegaConf.load(args.model_config_path)
+
     # Model
-    model = OnlineLLM(provider=args.provider)
+    # if model config is present, it has priority over command line args for model and provider, otherwise use command line args
+    model = OnlineLLM(
+        provider=  model_config["models"]["primary"]["provider"] if model_config is not None else args.provider,
+        api_key= model_config["models"]["primary"]["api_key"] if model_config is not None else args.api_key,
+        reasoning_effort=args.reasoning_effort,
+    )
 
     # Pipeline
     pipeline = OnlineAPI(
@@ -63,6 +72,10 @@ async def run(args, trial, cache_path):
 
     # Environment
     environment = EnvironmentFactory.get(args.benchmark)
+
+    # set jury if present
+    if model_config is not None and model_config["models"]["jury"] is not None: # add jury only if config defines it and config exists
+        environment.add_jury_evaluation(model_config["models"]["jury"]) # jury is list of dicts, if jury not needed the environment just passes it
 
     # Method
     method = MethodFactory.get(
@@ -124,7 +137,10 @@ if __name__ == "__main__":
     parser.add_argument("--value_cache", action="store_true")
 
     parser.add_argument("--provider", type=str)
+    parser.add_argument("--api_key", type=str)
     parser.add_argument("--model", type=str)
+    parser.add_argument("--model_config_path", type=str, default="models_config.yaml")
+    parser.add_argument("--reasoning_effort", type=str, default=None)
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--max_completion_tokens", type=int)
     parser.add_argument("--top_p", type=float)
