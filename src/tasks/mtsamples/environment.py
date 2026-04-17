@@ -18,8 +18,9 @@ from ...typedefs import Environment, MAX_SEED, Request
 cache = Cache(".cache/mtsamples_jury_cache")
 
 MAX_LIKERT_SCORE = 5.0 # based on MTSamples evaluation criteria
+FINAL_SCORE_THRESHOLD = 4.5
 
-
+# parsing llm response for jury evaluation, introduced robostusess with possible variations of response formatting
 def clean_generation(text: str) -> str:
     text = text.strip()
     if "Final Section:" in text:
@@ -45,13 +46,13 @@ class JuryEvaluation(BaseModel):
     completeness: CriterionScore
     clarity: CriterionScore
 
-    def normalized_score(self) -> float:
+    def score(self) -> float:
         raw_scores = [
             self.accuracy.score,
             self.completeness.score,
             self.clarity.score,
         ]
-        return sum(raw_scores) / (len(raw_scores) * MAX_LIKERT_SCORE)
+        return sum(raw_scores) / len(raw_scores)
 
 @EnvironmentFactory.register
 class EnvironmentMTSamples(Environment):
@@ -88,14 +89,14 @@ class EnvironmentMTSamples(Environment):
         if not state.steps:
             return False
         score = evaluate_with_jury(state)
-        return score >= 0.9
+        return score >= FINAL_SCORE_THRESHOLD
 
     @staticmethod
     def evaluate(state: StateMTSamples) -> Tuple[bool, float]:
         if not state.steps:
             return False, 0.0
         score = evaluate_with_jury(state)
-        return True, float(score)
+        return score >= FINAL_SCORE_THRESHOLD, float(score)
     
     @staticmethod
     def add_jury_evaluation(jury_models_info: List[dict]) -> None:
@@ -121,7 +122,7 @@ def evaluate_with_jury(state: StateMTSamples) -> float:
     if not evaluations:
         return 0.0
 
-    score = sum(evaluation.normalized_score() for evaluation in evaluations) / len(evaluations)
+    score = sum(evaluation.score() for evaluation in evaluations) / len(evaluations)
     cache.set(key, score)
     return float(score)
 
