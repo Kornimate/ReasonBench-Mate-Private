@@ -320,11 +320,19 @@ def initial_logging(
     if os.path.exists(os.path.join(os.getcwd(), args.model_config_path)):
         model_config = OmegaConf.load(args.model_config_path)
         logger.info("Model Configuration from file:")
+        logger.info("\tPrimary Model:")
         for key, value in model_config["models"]["primary"].items():
             if isinstance(value, str):
                 logger.info(f"\t{key}: '{value}'")
             else:
                 logger.info(f"\t{key}: {value}")
+        if model_config["models"]["jury"] is not None:
+            logger.info("\tJury Models:")
+            for key, value in model_config["models"]["jury"].items():
+                if isinstance(value, str):
+                    logger.info(f"\t{key}: '{value}'")
+                else:
+                    logger.info(f"\t{key}: {value}")
         logger.info("\n")
 
     logger.info("CacheSaver Information:")

@@ -103,9 +103,9 @@ class EnvironmentMTSamples(Environment):
         EnvironmentMTSamples.jury = jury_models_info
         EnvironmentMTSamples.jury_clients = [
             OnlineLLM(
-                provider=jury_model_info.get("provider", "openai"),
+                provider=jury_model_info.get("provider"),
                 api_key=jury_model_info.get("api_key"),
-                reasoning_effort=None,
+                reasoning_effort=jury_model_info.get("reasoning_effort", None),
             )
             for jury_model_info in jury_models_info
         ]
