@@ -1,25 +1,22 @@
+import asyncio
 import hashlib
 import json
-import os
 import random
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Tuple, override
+import threading
+from typing import Any, List, Tuple
 
 from diskcache import Cache
-from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from .prompts import JURY_PROMPT, io as TASK_PROMPT
 from .state import StateMTSamples
 from ... import EnvironmentFactory
-from ...typedefs import Environment, MAX_SEED
+from ...models.online import OnlineLLM
+from ...typedefs import Environment, MAX_SEED, Request
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY_CLAN") or os.getenv("OPENAI_API_KEY"), timeout=300, max_retries=1)
 cache = Cache(".cache/mtsamples_jury_cache")
 
-JUDGE_MODEL = os.getenv("MTSAMPLES_JUDGE_MODEL", "gpt-4.1-nano")
-JURY_SIZE = int(os.getenv("MTSAMPLES_JURY_SIZE", "3")) # if specified other way but standard is 3 based on MedHelm description
 MAX_LIKERT_SCORE = 5.0 # based on MTSamples evaluation criteria
 
 
@@ -56,9 +53,12 @@ class JuryEvaluation(BaseModel):
         ]
         return sum(raw_scores) / (len(raw_scores) * MAX_LIKERT_SCORE)
 
-
 @EnvironmentFactory.register
 class EnvironmentMTSamples(Environment):
+    
+    jury = None # holder for llm-as-a-jury information
+    jury_clients = None
+    
     @staticmethod
     def step(state: StateMTSamples, action: str) -> StateMTSamples:
         cleaned_action = clean_generation(action)
@@ -98,17 +98,20 @@ class EnvironmentMTSamples(Environment):
         return True, float(score)
     
     @staticmethod
-    @override
     def add_jury_evaluation(jury_models_info: List[dict]) -> None:
-        pass
+        EnvironmentMTSamples.jury = jury_models_info
+        EnvironmentMTSamples.jury_clients = [
+            OnlineLLM(
+                provider=jury_model_info.get("provider", "openai"),
+                api_key=jury_model_info.get("api_key"),
+                reasoning_effort=None,
+            )
+            for jury_model_info in jury_models_info
+        ]
 
 def evaluate_with_jury(state: StateMTSamples) -> float:
     question = build_user_request(state)
-    prompt = JURY_PROMPT.format(
-        QUESTION=question,
-        RESPONSE=state.current_state,
-        GOLD_RESPONSE=state.answer,
-    )
+    prompt = build_jury_prompt(question, state.current_state, state.answer)
     key = prompt_cache_key(prompt)
     cached_score = cache.get(key)
     if cached_score is not None:
@@ -123,37 +126,40 @@ def evaluate_with_jury(state: StateMTSamples) -> float:
     return float(score)
 
 
+def build_jury_prompt(question: str, response: str, gold_response: str) -> str:
+    return (
+        JURY_PROMPT
+        .replace("{QUESTION}", question)
+        .replace("{RESPONSE}", response)
+        .replace("{GOLD_RESPONSE}", gold_response)
+    )
+
+
 def run_jury(prompt: str) -> List[JuryEvaluation]:
-    if JURY_SIZE <= 0:
+    if EnvironmentMTSamples.jury is None or EnvironmentMTSamples.jury_clients is None:
+        raise ValueError("Jury models information must be set before running the jury evaluation.")
+    if not EnvironmentMTSamples.jury:
         return []
 
-    def run_single_juror(juror_idx: int) -> JuryEvaluation | None:
+    async def run_single_juror(juror_idx: int) -> JuryEvaluation | None:
         try:
-            response = client.beta.chat.completions.parse(
-                model=JUDGE_MODEL,
-                max_completion_tokens=1024,
-                temperature=1.0,
-                messages=[
-                    {"role": "user", "content": prompt},
-                ],
-                response_format=JuryEvaluation,
-            )
-            parsed = response.choices[0].message.parsed
-            if parsed is not None:
-                return parsed
+            content = await request_jury_response(prompt, juror_idx, temperature=1.0)
+            parsed = parse_jury_evaluation(content)
+            if parsed is None:
+                raise ValueError("Jury response did not contain a valid evaluation JSON object.")
+            return parsed
         except Exception as exc:
-            print(f"MTSamples structured jury error for juror {juror_idx + 1}: {exc}")
+            print(f"MTSamples jury error for juror {juror_idx + 1}: {exc}")
 
-        return run_jury_fallback(prompt, juror_idx)
+        return await run_jury_fallback(prompt, juror_idx)
 
-    evaluations: List[JuryEvaluation] = []
-    with ThreadPoolExecutor(max_workers=JURY_SIZE) as executor:
-        futures = [executor.submit(run_single_juror, juror_idx) for juror_idx in range(JURY_SIZE)]
-        for future in as_completed(futures):
-            recovered = future.result()
-            if recovered is not None:
-                evaluations.append(recovered)
-    return evaluations
+    async def run_all_jurors() -> List[JuryEvaluation]:
+        recovered = await asyncio.gather(
+            *(run_single_juror(juror_idx) for juror_idx in range(len(EnvironmentMTSamples.jury)))
+        )
+        return [evaluation for evaluation in recovered if evaluation is not None]
+
+    return run_async_from_sync(run_all_jurors())
 
 
 def build_user_request(state: StateMTSamples) -> str:
@@ -161,25 +167,82 @@ def build_user_request(state: StateMTSamples) -> str:
     return TASK_PROMPT.format(cleaned_text=cleaned_text)
 
 
-def run_jury_fallback(prompt: str, juror_idx: int) -> JuryEvaluation | None:
+async def run_jury_fallback(prompt: str, juror_idx: int) -> JuryEvaluation | None:
     try:
-        response = client.chat.completions.create(
-            model=JUDGE_MODEL,
-            max_completion_tokens=1024,
+        content = await request_jury_response(
+            prompt=prompt,
+            juror_idx=juror_idx,
             temperature=0.0,
-            messages=[
-                {"role": "user", "content": prompt},
-                {
-                    "role": "user",
-                    "content": "Return only the valid JSON object requested above. Do not include markdown fences or any extra text.",
-                },
-            ],
+            extra_instruction=(
+                "Return only the valid JSON object requested above. "
+                "Do not include markdown fences or any extra text."
+            ),
         )
-        content = response.choices[0].message.content or ""
         return parse_jury_evaluation(content)
     except Exception as exc:
         print(f"MTSamples fallback jury error for juror {juror_idx + 1}: {exc}")
         return None
+
+
+async def request_jury_response(
+    prompt: str,
+    juror_idx: int,
+    temperature: float,
+    extra_instruction: str | None = None,
+) -> str:
+    jury_model_info = EnvironmentMTSamples.jury[juror_idx % len(EnvironmentMTSamples.jury)]
+    client = EnvironmentMTSamples.jury_clients[juror_idx % len(EnvironmentMTSamples.jury_clients)]
+    messages: str | List[dict[str, str]]
+    messages = [{"role": "user", "content": prompt}]
+    if extra_instruction:
+        messages.append({"role": "user", "content": extra_instruction})
+
+    response = await client.request(
+        Request(
+            args="",
+            kwargs={
+                "prompt": messages,
+                "model": jury_model_info["model"],
+                "max_completion_tokens": 1024,
+                "temperature": temperature,
+                "top_p": jury_model_info.get("top_p", 1.0),
+                "stop": jury_model_info.get("stop"),
+                "logprobs": False,
+            },
+            n=1,
+            request_id=f"mtsamples-jury-{juror_idx}",
+            namespace="mtsamples_jury",
+        )
+    )
+    if not response.data:
+        return ""
+    first_result = response.data[0]
+    if isinstance(first_result, tuple):
+        return str(first_result[0] or "")
+    return str(first_result or "")
+
+
+def run_async_from_sync(coroutine) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)
+
+    result: dict[str, Any] = {}
+    error: dict[str, BaseException] = {}
+
+    def run_in_thread() -> None:
+        try:
+            result["value"] = asyncio.run(coroutine)
+        except BaseException as exc:
+            error["value"] = exc
+
+    thread = threading.Thread(target=run_in_thread)
+    thread.start()
+    thread.join()
+    if error:
+        raise error["value"]
+    return result.get("value")
 
 
 def parse_jury_evaluation(content: str) -> JuryEvaluation | None:

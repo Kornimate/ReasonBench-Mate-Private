@@ -1,10 +1,10 @@
 $benchmark = "mtsamples"
-$method = "tot_dfs"
-$split = "mini"
+$method = "io"
+$split = "single"
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY_CLAN"
-$model = "gpt-5-nano"
+$model = "gpt-4.1-nano"
 
 $modelsConfigPath = "models_config.yaml"
 

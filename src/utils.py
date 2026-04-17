@@ -315,6 +315,17 @@ def initial_logging(
     logger.info("\tTop-p: %f", args.top_p)
     logger.info("\tStop: %s", args.stop)
     logger.info("\tLogprobs: %s\n", args.logprobs)
+    
+    model_config = None
+    if os.path.exists(os.path.join(os.getcwd(), args.model_config_path)):
+        model_config = OmegaConf.load(args.model_config_path)
+        logger.info("Model Configuration from file:")
+        for key, value in model_config["models"]["primary"].items():
+            if isinstance(value, str):
+                logger.info(f"\t{key}: '{value}'")
+            else:
+                logger.info(f"\t{key}: {value}")
+        logger.info("\n")
 
     logger.info("CacheSaver Information:")
     logger.info("\tBatch Size: %d", args.batch_size)
