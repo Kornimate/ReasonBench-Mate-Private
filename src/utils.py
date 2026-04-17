@@ -323,17 +323,17 @@ def initial_logging(
         logger.info("\tPrimary Model:")
         for key, value in model_config["models"]["primary"].items():
             if isinstance(value, str):
-                logger.info(f"\t{key}: '{value}'")
+                logger.info(f"\t\t{key}: '{value}'")
             else:
-                logger.info(f"\t{key}: {value}")
+                logger.info(f"\t\t{key}: {value}")
         if model_config["models"]["jury"] is not None:
             logger.info("\tJury Models:")
             for juror in model_config["models"]["jury"]:
                 for key, value in juror.items():
                     if isinstance(value, str):
-                        logger.info(f"\t{key}: '{value}'")
+                        logger.info(f"\t\t{key}: '{value}'")
                     else:
-                        logger.info(f"\t{key}: {value}")
+                        logger.info(f"\t\t{key}: {value}")
         logger.info("\n")
 
     logger.info("CacheSaver Information:")
