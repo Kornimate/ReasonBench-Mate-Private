@@ -2,5 +2,9 @@
   "mtsamples_procedures": {
     "class_name": "helm.benchmark.scenarios.mtsamples_procedures_scenario.MTSamplesProceduresScenario",
     "args": {}
+  },
+  "pubmed_qa": {
+    "class_name": "helm.benchmark.scenarios.pubmed_qa_scenario.PubMedQAScenario",
+    "args": {}
   }
 }
