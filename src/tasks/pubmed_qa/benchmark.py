@@ -85,6 +85,7 @@ def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
         prompt_text = _get_nested_attr(instance, "input.text", None)
         answer = _coerce_reference_text(instance).strip().lower()
         if not prompt_text or answer not in {"yes", "no", "maybe"}:
+            print(f"Skipping instance {idx} due to missing prompt or invalid answer: prompt='{prompt_text}', answer='{answer}'")
             continue
 
         prompt_text = str(prompt_text).strip()
