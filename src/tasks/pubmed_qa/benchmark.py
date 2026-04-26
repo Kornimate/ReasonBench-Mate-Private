@@ -79,16 +79,11 @@ def _extract_question(instance_input: str, fallback: str) -> str:
 def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
     scenario = _instantiate_medhelm_scenario("pubmed_qa")
     helm_instances = scenario.get_instances(str(dataset_dir))
-    
-    # print(helm_instances[0])
-    # print("\n\n\n\n\n")
-    # print(helm_instances[1])
 
     instances: List[Dict[str, str]] = []
     for idx, instance in enumerate(helm_instances):
         prompt_text = _get_nested_attr(instance, "input.text", None)
         answer = _coerce_reference_text(instance).strip().lower()
-        print(f"Instance {idx}: answer='{answer}' prompt_text='{prompt_text[:50]}...'")
         if not prompt_text or answer not in {"yes", "no", "maybe"}:
             continue
 
