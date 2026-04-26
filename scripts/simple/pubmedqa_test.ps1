@@ -1,5 +1,5 @@
-$benchmark = "mtsamples"
-$method = "cot"
+$benchmark = "pubmed_qa"
+$method = "io"
 $split = "single"
 
 $provider = "openai"

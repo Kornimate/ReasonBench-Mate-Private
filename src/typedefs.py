@@ -129,6 +129,10 @@ class Method(ABC):
     async def benchmark(self, benchmark: Benchmark, ns_ratio: bool=False, **kwargs) -> Tuple[List[float], List[List[State]]]:
         cache = {} if kwargs.pop("value_cache", False) else None
 
+        # sanity check for empty benchmark
+        if len(benchmark) == 0:
+            raise ValueError("Benchmark is empty. Cannot run benchmark method on an empty dataset.")
+
         # Set up Namespace distibution
         n_shared = int(ns_ratio * len(benchmark))
         n_unique = len(benchmark) - n_shared
