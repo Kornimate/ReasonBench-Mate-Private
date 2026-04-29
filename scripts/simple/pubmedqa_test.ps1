@@ -1,6 +1,6 @@
 $benchmark = "pubmed_qa"
-$method = "io"
-$split = "single"
+$method = "tot_dfs"
+$split = "mini"
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY_CLAN"
