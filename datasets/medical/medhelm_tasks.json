@@ -6,5 +6,9 @@
   "pubmed_qa": {
     "class_name": "helm.benchmark.scenarios.pubmed_qa_scenario.PubMedQAScenario",
     "args": {}
+  },
+  "mimic_rrs": {
+    "class_name": "helm.benchmark.scenarios.mimic_rrs_scenario.MIMICRRSScenario",
+    "args": {}
   }
 }
