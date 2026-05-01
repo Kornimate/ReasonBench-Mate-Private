@@ -13,4 +13,6 @@ __pycache__
 .nfs*
 datasets/dataset_wildchat.csv.gz
 
-mtsamples_procedures/
+/datasets/medical/mtsamples_procedures/
+/datasets/medical/mimic_rrs/
+datasets/medical/pubmed_qa/
