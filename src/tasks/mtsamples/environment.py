@@ -18,7 +18,8 @@ from ...typedefs import Environment, MAX_SEED, Request
 cache = Cache(".cache/mtsamples_jury_cache")
 
 MAX_LIKERT_SCORE = 5.0 # based on MTSamples evaluation criteria
-FINAL_SCORE_THRESHOLD = 4.5
+FINAL_SCORE_THRESHOLD = 3.8
+DEFAULT_JURY_SCORE = 1.0
 
 # parsing llm response for jury evaluation, introduced robostusess with possible variations of response formatting
 def clean_generation(text: str) -> str:
@@ -120,7 +121,7 @@ def evaluate_with_jury(state: StateMTSamples) -> float:
 
     evaluations = run_jury(prompt)
     if not evaluations:
-        return 0.0
+        return DEFAULT_JURY_SCORE
 
     score = sum(evaluation.score() for evaluation in evaluations) / len(evaluations)
     cache.set(key, score)

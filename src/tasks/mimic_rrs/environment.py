@@ -18,7 +18,7 @@ from ...typedefs import Environment, MAX_SEED, Request
 cache = Cache(".cache/mimic_rrs_jury_cache")
 
 MAX_LIKERT_SCORE = 5.0
-FINAL_SCORE_THRESHOLD = 4.5
+FINAL_SCORE_THRESHOLD = 4.0
 DEFAULT_JURY_SCORE = 1.0
 
 
