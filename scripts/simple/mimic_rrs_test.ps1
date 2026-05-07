@@ -1,5 +1,5 @@
 $benchmark = "mimic_rrs"
-$method = "foa"
+$method = "new_algo"
 $split = "single"
 
 $provider = "openai"
