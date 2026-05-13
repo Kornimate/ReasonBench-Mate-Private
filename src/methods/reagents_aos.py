@@ -390,7 +390,7 @@ class MethodReagentsAOS(Method):
             "avg_reward_react": avg_reward_by_agent.get("react"),
             "solved": bool(solved_indices),
         }
-        logger.info("AOS_STEP %s", json.dumps(self._round_log_value(log_entry)))
+        logger.info("\tAOS_STEP %s", json.dumps(self._round_log_value(log_entry)))
 
     def _filter_states(
         self,
@@ -482,6 +482,8 @@ class MethodReagentsAOS(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
+        logger.info("Runtime Agent Distribution Information:")
+
         for step in range(self.num_steps):
             new_records, agent_indices, fleet_counts = await self._mutate_states(
                 records, namespace, idx, step
@@ -523,5 +525,7 @@ class MethodReagentsAOS(Method):
 
             if not records:
                 break
+
+        logger.info("")
 
         return [record.state for record in records] if records else [state]
