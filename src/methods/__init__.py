@@ -9,4 +9,4 @@ from .cot import AgentDictCOT, MethodCOT
 from .cot_sc import AgentDictCoT, MethodCOT_SC
 from .het_foa import AgentDictHetFOA, MethodHetFOA
 from .new_algo import AgentDictNewAlgo, MethodNewAlgo
-from .reagents import AgentDictReAgents, MethodReAgents
+from .reagents_aos import AgentDictReagentsAOS, MethodReagentsAOS

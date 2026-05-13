@@ -89,6 +89,7 @@ class MethodFactory:
         if not step_agent_configs:
             return [
                 {
+                    "agent_type": default_agent_type,
                     "agent": AgentFactory.get(default_agent_type, benchmark),
                     "params": params,
                     "num_agents": int(default_count),
@@ -97,9 +98,11 @@ class MethodFactory:
 
         specs = []
         for step_agent_config in step_agent_configs:
+            agent_type = step_agent_config.get("agent_type", default_agent_type)
             specs.append(
                 {
-                    "agent": AgentFactory.get(step_agent_config.get("agent_type", default_agent_type), benchmark),
+                    "agent_type": agent_type,
+                    "agent": AgentFactory.get(agent_type, benchmark),
                     "params": params,
                     "num_agents": int(step_agent_config.get("num_agents", 1)),
                 }
@@ -172,6 +175,43 @@ class MethodFactory:
                     default_agent_type="act",
                     default_count=getattr(config, "width", 1),
                 ),
+                "difficulty_agent": (
+                    {
+                        "agent": AgentFactory.get(getattr(config, "difficulty_agent_type", "population"), benchmark),
+                        "params": params,
+                    }
+                    if getattr(config, "difficulty_agent_type", None)
+                    else None
+                ),
+            }
+        elif method == "reagents_aos":
+            if getattr(config, "step_agents", None):
+                step_agents = cls._build_step_agent_specs(
+                    benchmark=benchmark,
+                    params=params,
+                    config=config,
+                    default_agent_type="act",
+                    default_count=getattr(config, "width", 1),
+                )
+            else:
+                step_agents = [
+                    {
+                        "agent_type": "act",
+                        "agent": AgentFactory.get("act", benchmark),
+                        "params": params,
+                        "num_agents": 1,
+                    },
+                    {
+                        "agent_type": "react",
+                        "agent": AgentFactory.get("react", benchmark),
+                        "params": params,
+                        "num_agents": 1,
+                    },
+                ]
+
+            agents = {
+                "evaluate": AgentFactory.get("evaluate", benchmark),
+                "step_agents": step_agents,
                 "difficulty_agent": (
                     {
                         "agent": AgentFactory.get(getattr(config, "difficulty_agent_type", "population"), benchmark),

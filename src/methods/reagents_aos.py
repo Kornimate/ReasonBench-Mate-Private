@@ -1,6 +1,8 @@
 import asyncio
+import json
+import logging
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, TypedDict
 
 import numpy as np
@@ -9,30 +11,92 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
+from .new_algo import StepAgentSpec, DifficultyAgentSpec, SearchRecord
+
+logger = logging.getLogger("__main__")
 
 
-class StepAgentSpec(TypedDict):
-    agent_type: str
-    agent: Agent
-    params: DecodingParameters
-    num_agents: int
+@dataclass
+class AOSAllocator:
+    num_agents_types: int
+    num_steps: int
+    alpha: float = 0.2
+    temperature: float = 0.25
+    epsilon: float = 0.10
+    min_count_per_type: int = 0
 
+    q_values: np.ndarray = field(init=False)
+    counts: np.ndarray = field(init=False)
 
-class DifficultyAgentSpec(TypedDict):
-    agent: Agent
-    params: DecodingParameters
+    def __post_init__(self):
+        self.q_values = np.zeros((self.num_steps, self.num_agents_types), dtype=float)
+        self.counts = np.zeros((self.num_steps, self.num_agents_types), dtype=int)
 
+    def _softmax(self, scores: np.ndarray) -> np.ndarray:
+        temperature = max(self.temperature, 1e-6)
+        centered = scores - np.max(scores)
+        exp_scores = np.exp(centered / temperature)
+        probs = exp_scores / np.sum(exp_scores)
 
-@dataclass(frozen=True)
-class SearchRecord:
-    state: State
-    value: float
-    depth: int
-    uncertainty: float = 0.0
+        # exploration floor
+        k = len(probs)
+        probs = (1.0 - self.epsilon) * probs + self.epsilon / k
+        probs = probs / probs.sum()
+
+        return probs
+
+    def get_probs(self, depth: int) -> np.ndarray:
+        depth = max(0, min(depth, self.num_steps - 1))
+        return self._softmax(self.q_values[depth])
+
+        
+    # return exact integer counts for each operator.
+    def allocate(self, width: int, depth: int) -> list[int]:
+        probs = self.get_probs(depth)
+        raw = width * probs
+
+        counts = np.floor(raw).astype(int)
+        remainder = width - int(counts.sum())
+
+        fractional = raw - counts
+        order = np.argsort(-fractional)
+
+        for idx in order[:remainder]:
+            counts[idx] += 1
+
+        # optional minimum count rule, want both act/react present
+        if self.min_count_per_type > 0 and width >= self.num_agents_types * self.min_count_per_type:
+            for i in range(self.num_agents_types):
+                if counts[i] < self.min_count_per_type:
+                    donor = int(np.argmax(counts))
+                    if counts[donor] > self.min_count_per_type:
+                        counts[donor] -= 1
+                        counts[i] += 1
+
+        return counts.tolist()
+
+    # update Q-values from observed rewards.
+    def update(self, depth: int, agent_indices: list[int], rewards: list[float]) -> None:
+        if not agent_indices:
+            return
+
+        depth = max(0, min(depth, self.num_steps - 1))
+
+        by_agent: dict[int, list[float]] = {}
+        for agent_idx, reward in zip(agent_indices, rewards):
+            by_agent.setdefault(agent_idx, []).append(float(reward))
+
+        for agent_idx, rs in by_agent.items():
+            avg_reward = float(np.mean(rs))
+            old_q = self.q_values[depth, agent_idx]
+            self.q_values[depth, agent_idx] = (
+                (1.0 - self.alpha) * old_q + self.alpha * avg_reward
+            )
+            self.counts[depth, agent_idx] += len(rs)
 
 
 @AgentDictFactory.register
-class AgentDictNewAlgo(TypedDict):
+class AgentDictReagentsAOS(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
     step_agents: list[StepAgentSpec]
@@ -40,10 +104,10 @@ class AgentDictNewAlgo(TypedDict):
 
 
 @MethodFactory.register
-class MethodNewAlgo(Method):
+class MethodReagentsAOS(Method):
     def __init__(
         self,
-        agents: AgentDictNewAlgo,
+        agents: AgentDictReagentsAOS,
         model: Model,
         env: Environment,
         config: OmegaConf,
@@ -74,6 +138,17 @@ class MethodNewAlgo(Method):
         }
 
         self.priors = np.ones((self.num_steps, len(self.step_agents))) / max(len(self.step_agents), 1)
+
+        # step_agents[0] = act
+        # step_agents[1] = react
+        self.allocator = AOSAllocator(
+            num_agents_types=len(self.step_agents),
+            num_steps=self.num_steps,
+            alpha=float(getattr(config, "aos_alpha", 0.2)),
+            temperature=float(getattr(config, "aos_temperature", 0.25)),
+            epsilon=float(getattr(config, "aos_epsilon", 0.10)),
+            min_count_per_type=int(getattr(config, "aos_min_count_per_type", 0)),
+        )
 
     def _normalize_score(self, score) -> float:
         if isinstance(score, (int, float)):
@@ -125,37 +200,70 @@ class MethodNewAlgo(Method):
         idx: int,
         step: int,
     ):
+        width = len(records)
+
+        # exact fleet allocation
+        counts = self.allocator.allocate(width=width, depth=step)
+
         agent_indices = []
+        for agent_index, count in enumerate(counts):
+            agent_indices.extend([agent_index] * count)
+
+        # Safety in case rounding/min-count logic somehow mismatches
+        agent_indices = agent_indices[:width]
+        while len(agent_indices) < width:
+            agent_indices.append(int(np.argmax(self.allocator.get_probs(step))))
+
+        random.shuffle(agent_indices)
+
         coroutines = []
 
         for i, record in enumerate(records):
-            agent_index = self._sample_agent_index(record.depth)
+            agent_index = agent_indices[i]
             spec = self.step_agents[agent_index]
-            agent_indices.append(agent_index)
+
             coroutines.append(
                 spec["agent"].act(
                     model=self.model,
                     state=record.state,
                     n=1,
                     namespace=namespace,
-                    request_id=f"idx{idx}-step{step}-{hash(record.state)}-agent{agent_index + 100 * i}",
+                    request_id=(
+                        f"idx{idx}-step{step}-"
+                        f"{hash(record.state)}-agent{agent_index + 100 * i}"
+                    ),
                     params=spec["params"],
                 )
             )
 
         action_batches = await asyncio.gather(*coroutines)
+
         new_records = []
         for record, actions in zip(records, action_batches):
             if not actions:
-                new_records.append(SearchRecord(state=record.state, value=record.value, depth=record.depth + 1))
+                new_records.append(
+                    SearchRecord(
+                        state=record.state,
+                        value=record.value,
+                        depth=record.depth + 1,
+                    )
+                )
                 continue
+
             try:
                 new_state = self.env.step(record.state, actions[0])
             except Exception:
                 new_state = record.state
-            new_records.append(SearchRecord(state=new_state, value=record.value, depth=record.depth + 1))
 
-        return new_records, agent_indices
+            new_records.append(
+                SearchRecord(
+                    state=new_state,
+                    value=record.value,
+                    depth=record.depth + 1,
+                )
+            )
+
+        return new_records, agent_indices, counts
 
     async def _evaluate_states(
         self,
@@ -205,24 +313,6 @@ class MethodNewAlgo(Method):
 
         return updated_records, sorted(set(terminal_indices)), solved_indices
 
-    def _update_priors(self, agent_indices: list[int], old_records: list[SearchRecord], new_records: list[SearchRecord]) -> None:
-        if not self.features["updating_priors"]:
-            return
-
-        for i, agent_index in enumerate(agent_indices):
-            depth = max(0, min(old_records[i].depth, self.num_steps - 1))
-            delta = new_records[i].value - old_records[i].value
-            for offset in range(-self.k, self.k + 1):
-                target_depth = depth + offset
-                if 0 <= target_depth < self.num_steps:
-                    self.priors[target_depth][agent_index] += (
-                        (self.backtrack ** abs(offset)) * self.priors[depth][agent_index] * self.alpha * delta
-                    )
-                    self.priors[target_depth][agent_index] = min(1.0, max(0.001, self.priors[target_depth][agent_index]))
-
-        self.priors = np.nan_to_num(self.priors, nan=0.0)
-        self.priors /= self.priors.sum(axis=-1, keepdims=True)
-
     def _update_width(self, old_records: list[SearchRecord], new_records: list[SearchRecord], width: int) -> int:
         if not self.features["runtime_width_adaptation"] or not old_records or not new_records:
             return width
@@ -233,6 +323,74 @@ class MethodNewAlgo(Method):
         if old_avg < new_avg:
             return max(max(1, self.width // 2), width - 1)
         return min(self.width + self.width // 2, width + 1)
+
+    def _average_reward_for_agent(
+        self,
+        agent_indices: list[int],
+        rewards: list[float],
+        agent_index: int,
+    ) -> Optional[float]:
+        agent_rewards = [
+            float(reward)
+            for assigned_agent_index, reward in zip(agent_indices, rewards)
+            if assigned_agent_index == agent_index
+        ]
+        if not agent_rewards:
+            return None
+        return float(np.mean(agent_rewards))
+
+    def _round_log_value(self, value):
+        if isinstance(value, dict):
+            return {
+                key: self._round_log_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._round_log_value(item) for item in value]
+        if isinstance(value, float):
+            return round(value, 4)
+        return value
+
+    def _log_aos_step(
+        self,
+        step: int,
+        width: int,
+        fleet_counts: list[int],
+        agent_indices: list[int],
+        rewards: list[float],
+        solved_indices: list[int],
+    ) -> None:
+        agent_types = [
+            spec.get("agent_type", f"agent_{agent_index}")
+            for agent_index, spec in enumerate(self.step_agents)
+        ]
+        agent_counts = {
+            agent_type: int(fleet_counts[agent_index])
+            for agent_index, agent_type in enumerate(agent_types)
+        }
+        agent_distribution = {
+            agent_type: (float(count) / width if width else 0.0)
+            for agent_type, count in agent_counts.items()
+        }
+        avg_reward_by_agent = {
+            agent_type: self._average_reward_for_agent(agent_indices, rewards, agent_index)
+            for agent_index, agent_type in enumerate(agent_types)
+        }
+        log_entry = {
+            "step": step,
+            "width": width,
+            "agent_types": agent_types,
+            "fleet_counts": fleet_counts,
+            "agent_counts": agent_counts,
+            "agent_distribution": agent_distribution,
+            "q_values": self.allocator.q_values[step].tolist(),
+            "probs": self.allocator.get_probs(step).tolist(),
+            "avg_reward_by_agent": avg_reward_by_agent,
+            "avg_reward_act": avg_reward_by_agent.get("act"),
+            "avg_reward_react": avg_reward_by_agent.get("react"),
+            "solved": bool(solved_indices),
+        }
+        logger.info("AOS_STEP %s", json.dumps(self._round_log_value(log_entry)))
 
     def _filter_states(
         self,
@@ -325,14 +483,34 @@ class MethodNewAlgo(Method):
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
         for step in range(self.num_steps):
-            new_records, agent_indices = await self._mutate_states(records, namespace, idx, step)
+            new_records, agent_indices, fleet_counts = await self._mutate_states(
+                records, namespace, idx, step
+            )
+
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
                 new_records, value_cache, namespace, idx, step
             )
 
-            self.priors = np.nan_to_num(self.priors, nan=0.0)
-            self.priors /= self.priors.sum(axis=-1, keepdims=True)
-            self._update_priors(agent_indices, records, new_records)
+            rewards = [
+                max(-1.0, min(1.0, new.value - old.value))
+                for old, new in zip(records, new_records)
+            ]
+
+            self.allocator.update(
+                depth=step,
+                agent_indices=agent_indices,
+                rewards=rewards,
+            )
+
+            self._log_aos_step(
+                step=step,
+                width=width,
+                fleet_counts=fleet_counts,
+                agent_indices=agent_indices,
+                rewards=rewards,
+                solved_indices=solved_indices,
+            )
+
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
