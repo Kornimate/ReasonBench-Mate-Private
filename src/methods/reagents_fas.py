@@ -1,5 +1,8 @@
 import asyncio
 import random
+import math
+import logging
+import json
 from dataclasses import dataclass
 from typing import Optional, TypedDict
 
@@ -12,9 +15,165 @@ from ..utils import Resampler
 from .new_algo import DifficultyAgentSpec, SearchRecord
 from .reagents_aos import StepAgentInfo
 
+logger = logging.getLogger("__main__")
+
+
+@dataclass
+class FeatureBasedFleetSelector:
+    num_steps: int
+    min_react_prob: float = 0.15
+    max_react_prob: float = 0.85
+    min_count_per_type: int = 1
+
+    beta_0: float = -0.4
+    beta_difficulty: float = 1.2
+    beta_uncertainty: float = 1.0
+    beta_stagnation: float = 0.8
+    beta_duplicate: float = 0.8
+    beta_progress: float = -0.8
+    beta_time_pressure: float = -0.7
+
+    previous_best_value: float = 0.0
+    stagnation_steps: int = 0
+
+    def sigmoid(self, z: float) -> float:
+        return 1.0 / (1.0 + math.exp(-z))
+
+    def compute_features(
+        self,
+        records,
+        step: int,
+        difficulty: float = 0.5,
+    ) -> dict:
+        values = np.array([float(record.value) for record in records], dtype=float)
+        width = len(records)
+
+        mean_value = float(np.mean(values)) if width else 0.0
+        best_value = float(np.max(values)) if width else 0.0
+        value_variance = float(np.var(values)) if width else 0.0
+
+        # Assumes evaluator values are in [0, 1].
+        uncertainty = min(1.0, value_variance / 0.25)
+
+        progress = best_value - self.previous_best_value
+        progress_norm = max(0.0, min(1.0, progress))
+
+        if progress > 1e-6:
+            self.stagnation_steps = 0
+        else:
+            self.stagnation_steps += 1
+
+        stagnation_norm = min(1.0, self.stagnation_steps / 3.0)
+
+        state_strings = [str(record.state) for record in records]
+        unique_states = len(set(state_strings))
+        duplicate_fraction = 1.0 - (unique_states / max(width, 1))
+
+        time_pressure = step / max(self.num_steps - 1, 1)
+
+        self.previous_best_value = max(self.previous_best_value, best_value)
+
+        return {
+            "width": width,
+            "mean_value": mean_value,
+            "best_value": best_value,
+            "value_variance": value_variance,
+            "uncertainty": uncertainty,
+            "progress": progress,
+            "progress_norm": progress_norm,
+            "stagnation_norm": stagnation_norm,
+            "duplicate_fraction": duplicate_fraction,
+            "difficulty": max(0.0, min(1.0, difficulty)),
+            "time_pressure": max(0.0, min(1.0, time_pressure)),
+        }
+
+    def react_probability(self, features: dict) -> float:
+        z = (
+            self.beta_0
+            + self.beta_difficulty * features["difficulty"]
+            + self.beta_uncertainty * features["uncertainty"]
+            + self.beta_stagnation * features["stagnation_norm"]
+            + self.beta_duplicate * features["duplicate_fraction"]
+            + self.beta_progress * features["progress_norm"]
+            + self.beta_time_pressure * features["time_pressure"]
+        )
+
+        p_react = self.sigmoid(z)
+
+        p_react = max(self.min_react_prob, min(self.max_react_prob, p_react))
+
+        return p_react
+
+    def allocate(
+        self,
+        records,
+        step: int,
+        difficulty: float = 0.5,
+    ) -> tuple[list[int], dict]:
+        features = self.compute_features(
+            records=records,
+            step=step,
+            difficulty=difficulty,
+        )
+
+        width = features["width"]
+        p_react = self.react_probability(features)
+        p_act = 1.0 - p_react
+
+        counts = self._largest_remainder_allocation(
+            width=width,
+            probs=np.array([p_act, p_react], dtype=float),
+        )
+
+        counts = self._enforce_min_counts(counts, width)
+
+        features["p_act"] = p_act
+        features["p_react"] = p_react
+        features["n_act"] = int(counts[0])
+        features["n_react"] = int(counts[1])
+
+        return counts.tolist(), features
+
+    def _largest_remainder_allocation(
+        self,
+        width: int,
+        probs: np.ndarray,
+    ) -> np.ndarray:
+        raw = width * probs
+        counts = np.floor(raw).astype(int)
+
+        remaining = width - int(counts.sum())
+        fractional = raw - counts
+        order = np.argsort(-fractional)
+
+        for idx in order[:remaining]:
+            counts[idx] += 1
+
+        return counts
+
+    def _enforce_min_counts(
+        self,
+        counts: np.ndarray,
+        width: int,
+    ) -> np.ndarray:
+        if self.min_count_per_type <= 0:
+            return counts
+
+        required_total = 2 * self.min_count_per_type
+        if width < required_total:
+            return counts
+
+        for i in range(2):
+            if counts[i] < self.min_count_per_type:
+                donor = int(np.argmax(counts))
+                if counts[donor] > self.min_count_per_type:
+                    counts[donor] -= 1
+                    counts[i] += 1
+
+        return counts
 
 @AgentDictFactory.register
-class AgentDictNewAlgo(TypedDict):
+class AgentDictReagentsFAS(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
     step_agents: list[StepAgentInfo]
@@ -22,10 +181,10 @@ class AgentDictNewAlgo(TypedDict):
 
 
 @MethodFactory.register
-class MethodNewAlgo(Method):
+class MethodReagentsFAS(Method):
     def __init__(
         self,
-        agents: AgentDictNewAlgo,
+        agents: AgentDictReagentsFAS,
         model: Model,
         env: Environment,
         config: OmegaConf,
@@ -56,6 +215,20 @@ class MethodNewAlgo(Method):
         }
 
         self.priors = np.ones((self.num_steps, len(self.step_agents))) / max(len(self.step_agents), 1)
+
+        self.selector = FeatureBasedFleetSelector(
+            num_steps=self.num_steps,
+            min_react_prob=float(getattr(config, "min_react_prob", 0.15)),
+            max_react_prob=float(getattr(config, "max_react_prob", 0.85)),
+            min_count_per_type=int(getattr(config, "min_count_per_type", 1)),
+            beta_0=float(getattr(config, "beta_0", -0.4)),
+            beta_difficulty=float(getattr(config, "beta_difficulty", 1.2)),
+            beta_uncertainty=float(getattr(config, "beta_uncertainty", 1.0)),
+            beta_stagnation=float(getattr(config, "beta_stagnation", 0.8)),
+            beta_duplicate=float(getattr(config, "beta_duplicate", 0.8)),
+            beta_progress=float(getattr(config, "beta_progress", -0.8)),
+            beta_time_pressure=float(getattr(config, "beta_time_pressure", -0.7)),
+        )
 
     def _normalize_score(self, score) -> float:
         if isinstance(score, (int, float)):
@@ -106,38 +279,77 @@ class MethodNewAlgo(Method):
         namespace: str,
         idx: int,
         step: int,
+        difficulty: float = 0.5,
     ):
+        fleet_counts, selector_features = self.selector.allocate(
+            records=records,
+            step=step,
+            difficulty=difficulty,
+        )
+
+        width = len(records)
+
         agent_indices = []
+        for agent_index, count in enumerate(fleet_counts):
+            agent_indices.extend([agent_index] * count)
+
+        agent_indices = agent_indices[:width]
+
+        while len(agent_indices) < width:
+            # fallback: use the larger count type
+            agent_indices.append(int(np.argmax(fleet_counts)))
+
+        random.shuffle(agent_indices)
+
         coroutines = []
 
         for i, record in enumerate(records):
-            agent_index = self._sample_agent_index(record.depth)
+            agent_index = agent_indices[i]
             spec = self.step_agents[agent_index]
-            agent_indices.append(agent_index)
+
             coroutines.append(
                 spec["agent"].act(
                     model=self.model,
                     state=record.state,
                     n=1,
                     namespace=namespace,
-                    request_id=f"idx{idx}-step{step}-{hash(record.state)}-agent{agent_index + 100 * i}",
+                    request_id=(
+                        f"idx{idx}-step{step}-"
+                        f"{hash(record.state)}-agent{agent_index + 100 * i}"
+                    ),
                     params=spec["params"],
                 )
             )
 
         action_batches = await asyncio.gather(*coroutines)
+
         new_records = []
+
         for record, actions in zip(records, action_batches):
             if not actions:
-                new_records.append(SearchRecord(state=record.state, value=record.value, depth=record.depth + 1))
+                new_records.append(
+                    SearchRecord(
+                        state=record.state,
+                        value=record.value,
+                        depth=record.depth + 1,
+                    )
+                )
                 continue
+
             try:
                 new_state = self.env.step(record.state, actions[0])
             except Exception:
                 new_state = record.state
-            new_records.append(SearchRecord(state=new_state, value=record.value, depth=record.depth + 1))
 
-        return new_records, agent_indices
+            new_records.append(
+                SearchRecord(
+                    state=new_state,
+                    value=record.value,
+                    depth=record.depth + 1,
+                )
+            )
+
+        return new_records, agent_indices, fleet_counts, selector_features
 
     async def _evaluate_states(
         self,
@@ -306,10 +518,34 @@ class MethodNewAlgo(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
+        logger.info("Runtime Agent Distribution Information:")
+
         for step in range(self.num_steps):
-            new_records, agent_indices = await self._mutate_states(records, namespace, idx, step)
+            difficulty = getattr(self, "current_difficulty", 0.5)
+
+            new_records, agent_indices, fleet_counts, selector_features = await self._mutate_states(
+                records=records,
+                namespace=namespace,
+                idx=idx,
+                step=step,
+                difficulty=difficulty,
+            )
+            
+            logger.info(
+                '\t' + json.dumps({
+                    "step": step,
+                    "width": len(records),
+                    "fleet_counts": fleet_counts,
+                    "selector_features": selector_features,
+                })
+            )
+
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
-                new_records, value_cache, namespace, idx, step
+                new_records,
+                value_cache,
+                namespace,
+                idx,
+                step,
             )
 
             self.priors = np.nan_to_num(self.priors, nan=0.0)
@@ -327,5 +563,7 @@ class MethodNewAlgo(Method):
 
             if not records:
                 break
+
+        logger.info("")
 
         return [record.state for record in records] if records else [state]

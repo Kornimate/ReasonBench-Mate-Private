@@ -184,7 +184,7 @@ class MethodFactory:
                     else None
                 ),
             }
-        elif method == "reagents_aos" or method == "reagents_alns":
+        elif method == "reagents_aos" or method == "reagents_alns" or method == "reagents_fas":
             if getattr(config, "step_agents", None):
                 step_agents = cls._build_step_agent_specs(
                     benchmark=benchmark,
