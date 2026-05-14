@@ -128,8 +128,6 @@ class MethodReagentsAOS(Method):
         self.width = int(config.width)
         self.num_steps = int(config.num_steps)
         self.max_value = float(config.max_value)
-        self.k = int(config.k)
-        self.alpha = float(config.alpha)
         self.backtrack = float(config.backtrack)
         self.resampling = str(config.resampling)
         self.origin = float(config.origin)
@@ -137,16 +135,11 @@ class MethodReagentsAOS(Method):
         self.num_evaluations = int(config.num_evaluations)
 
         self.features = {
-            "updating_priors": bool(getattr(config, "updating_priors", True)),
             "difficulty_based_width_init": bool(getattr(config, "difficulty_based_width_init", True)),
             "runtime_width_adaptation": bool(getattr(config, "runtime_width_adaptation", True)),
             "skewed_state_detection": bool(getattr(config, "skewed_state_detection", False)),
         }
 
-        self.priors = np.ones((self.num_steps, len(self.step_agents))) / max(len(self.step_agents), 1)
-
-        # step_agents[0] = act
-        # step_agents[1] = react
         self.allocator = AOSAllocator(
             num_agents_types=len(self.step_agents),
             num_steps=self.num_steps,
@@ -164,16 +157,6 @@ class MethodReagentsAOS(Method):
         if isinstance(score, list) and score:
             return self._normalize_score(score[-1])
         return 0.0
-
-    def _sample_agent_index(self, depth: int) -> int:
-        bounded_depth = max(0, min(depth, self.num_steps - 1))
-        probs = np.nan_to_num(self.priors[bounded_depth], nan=0.0)
-        total = probs.sum()
-        if total <= 0:
-            probs = np.ones(len(self.step_agents)) / len(self.step_agents)
-        else:
-            probs = probs / total
-        return int(np.random.choice(len(self.step_agents), p=probs))
 
     async def _get_width(self, state: State, idx: int) -> int:
         if not self.difficulty_agent or not self.features["difficulty_based_width_init"]:
