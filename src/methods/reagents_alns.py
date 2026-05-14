@@ -123,8 +123,6 @@ class MethodReagentsALNS(Method):
         self.width = int(config.width)
         self.num_steps = int(config.num_steps)
         self.max_value = float(config.max_value)
-        self.k = int(config.k)
-        self.alpha = float(config.alpha)
         self.backtrack = float(config.backtrack)
         self.resampling = str(config.resampling)
         self.origin = float(config.origin)
@@ -138,18 +136,15 @@ class MethodReagentsALNS(Method):
         self.alns_score_worse = float(getattr(config, "alns_score_worse", 0.0))
 
         self.features = {
-            "updating_priors": bool(getattr(config, "updating_priors", True)),
             "difficulty_based_width_init": bool(getattr(config, "difficulty_based_width_init", True)),
             "runtime_width_adaptation": bool(getattr(config, "runtime_width_adaptation", True)),
             "skewed_state_detection": bool(getattr(config, "skewed_state_detection", False)),
         }
 
-        self.priors = np.ones((self.num_steps, len(self.step_agents))) / max(len(self.step_agents), 1)
-        
         self.allocator = ALNSFleetAllocator(
             num_agent_types=len(self.step_agents),
-            reaction_factor=(getattr(config, "alns_reaction_factor", 0.2)),
-            min_weight=(getattr(config, "alns_min_weight", 0.05)),
+            reaction_factor=float(getattr(config, "alns_reaction_factor", 0.2)),
+            min_weight=float(getattr(config, "alns_min_weight", 0.05)),
             min_count_per_type=int(getattr(config, "alns_min_count_per_type", 1)),
         )
 
@@ -161,16 +156,6 @@ class MethodReagentsALNS(Method):
         if isinstance(score, list) and score:
             return self._normalize_score(score[-1])
         return 0.0
-
-    def _sample_agent_index(self, depth: int) -> int:
-        bounded_depth = max(0, min(depth, self.num_steps - 1))
-        probs = np.nan_to_num(self.priors[bounded_depth], nan=0.0)
-        total = probs.sum()
-        if total <= 0:
-            probs = np.ones(len(self.step_agents)) / len(self.step_agents)
-        else:
-            probs = probs / total
-        return int(np.random.choice(len(self.step_agents), p=probs))
 
     async def _get_width(self, state: State, idx: int) -> int:
         if not self.difficulty_agent or not self.features["difficulty_based_width_init"]:
@@ -317,24 +302,6 @@ class MethodReagentsALNS(Method):
 
         return updated_records, sorted(set(terminal_indices)), solved_indices
 
-    def _update_priors(self, agent_indices: list[int], old_records: list[SearchRecord], new_records: list[SearchRecord]) -> None:
-        if not self.features["updating_priors"]:
-            return
-
-        for i, agent_index in enumerate(agent_indices):
-            depth = max(0, min(old_records[i].depth, self.num_steps - 1))
-            delta = new_records[i].value - old_records[i].value
-            for offset in range(-self.k, self.k + 1):
-                target_depth = depth + offset
-                if 0 <= target_depth < self.num_steps:
-                    self.priors[target_depth][agent_index] += (
-                        (self.backtrack ** abs(offset)) * self.priors[depth][agent_index] * self.alpha * delta
-                    )
-                    self.priors[target_depth][agent_index] = min(1.0, max(0.001, self.priors[target_depth][agent_index]))
-
-        self.priors = np.nan_to_num(self.priors, nan=0.0)
-        self.priors /= self.priors.sum(axis=-1, keepdims=True)
-
     def _update_width(self, old_records: list[SearchRecord], new_records: list[SearchRecord], width: int) -> int:
         if not self.features["runtime_width_adaptation"] or not old_records or not new_records:
             return width
@@ -442,7 +409,7 @@ class MethodReagentsALNS(Method):
         if new_value == old_value:
             return self.alns_score_neutral
 
-        return 0.0 # could be self.alns_score_worse or a separate score for worse outcomes
+        return self.alns_score_worse
 
     async def solve(self, idx: int, state: State, namespace: str, value_cache: dict = None):
         random.seed(idx)
@@ -479,8 +446,10 @@ class MethodReagentsALNS(Method):
                     "fleet_counts": fleet_counts,
                     "weights": self.allocator.weights.tolist(),
                     "probs": self.allocator.get_probs().tolist(),
-                    "num_act": fleet_counts[0],
-                    "num_react": fleet_counts[1],
+                    "agent_counts": {
+                        spec.get("agent_type", f"agent_{agent_index}"): fleet_counts[agent_index]
+                        for agent_index, spec in enumerate(self.step_agents)
+                    },
                 })
             )
 

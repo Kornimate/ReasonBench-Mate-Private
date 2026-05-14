@@ -90,6 +90,7 @@ reagents_aos:
   num_evaluations: 1
 
   runtime_width_adaptation: true
+  difficulty_based_width_init: true
 
   aos_alpha: 0.2
   aos_temperature: 0.25
@@ -100,8 +101,6 @@ reagents_alns:
   width: 5
   num_steps: 8
   max_value: 1.0
-  k: 1
-  alpha: 0.2
   backtrack: 0.9
   resampling: linear
   origin: 0.5
