@@ -1,7 +1,7 @@
 $benchmark = "mtsamples"
-$method = "reagents_aos"
+# $method = "reagents_aos"
 # $method = "reagents_alns"
-# $method = "reagents_fas"
+$method = "reagents_fas"
 $split = "single"
 
 $provider = "openai"

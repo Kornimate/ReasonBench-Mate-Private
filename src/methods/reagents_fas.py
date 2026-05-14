@@ -1,8 +1,6 @@
 import asyncio
-import logging
 import random
-import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, TypedDict
 
 import numpy as np
@@ -14,90 +12,9 @@ from ..utils import Resampler
 from .new_algo import DifficultyAgentSpec, SearchRecord
 from .reagents_aos import StepAgentInfo
 
-logger = logging.getLogger("__main__")
-
-@dataclass
-class ALNSFleetAllocator:
-    num_agent_types: int
-    reaction_factor: float = 0.2
-    min_weight: float = 0.05
-    min_count_per_type: int = 1
-
-    weights: np.ndarray = field(init=False)
-    segment_scores: np.ndarray = field(init=False)
-    segment_counts: np.ndarray = field(init=False)
-
-    def __post_init__(self):
-        self.weights = np.ones(self.num_agent_types, dtype=float)
-        self.segment_scores = np.zeros(self.num_agent_types, dtype=float)
-        self.segment_counts = np.zeros(self.num_agent_types, dtype=int)
-
-    def get_probs(self) -> np.ndarray:
-        safe_weights = np.maximum(self.weights, self.min_weight)
-        return safe_weights / safe_weights.sum()
-
-    def allocate(self, width: int) -> list[int]:
-        probs = self.get_probs()
-        raw = width * probs
-
-        counts = np.floor(raw).astype(int)
-        remaining = width - int(counts.sum())
-
-        fractional = raw - counts
-        order = np.argsort(-fractional)
-
-        for idx in order[:remaining]:
-            counts[idx] += 1
-
-        counts = self._enforce_min_counts(counts, width)
-
-        return counts.tolist()
-
-    def _enforce_min_counts(self, counts: np.ndarray, width: int) -> np.ndarray:
-        if self.min_count_per_type <= 0:
-            return counts
-
-        required_total = self.num_agent_types * self.min_count_per_type
-        if width < required_total:
-            return counts
-
-        for i in range(self.num_agent_types):
-            if counts[i] < self.min_count_per_type:
-                deficit = self.min_count_per_type - counts[i]
-
-                for _ in range(deficit):
-                    donor = int(np.argmax(counts))
-                    if counts[donor] <= self.min_count_per_type:
-                        break
-
-                    counts[donor] -= 1
-                    counts[i] += 1
-
-        return counts
-
-    def add_result(self, agent_index: int, score: float) -> None:
-        self.segment_scores[agent_index] += float(score)
-        self.segment_counts[agent_index] += 1
-
-    def update_weights(self) -> None:
-        for i in range(self.num_agent_types):
-            if self.segment_counts[i] == 0:
-                continue
-
-            avg_score = self.segment_scores[i] / self.segment_counts[i]
-
-            self.weights[i] = (
-                (1.0 - self.reaction_factor) * self.weights[i]
-                + self.reaction_factor * avg_score
-            )
-
-            self.weights[i] = max(self.weights[i], self.min_weight)
-
-        self.segment_scores[:] = 0.0
-        self.segment_counts[:] = 0
 
 @AgentDictFactory.register
-class AgentDictReagentsALNS(TypedDict):
+class AgentDictNewAlgo(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
     step_agents: list[StepAgentInfo]
@@ -105,10 +22,10 @@ class AgentDictReagentsALNS(TypedDict):
 
 
 @MethodFactory.register
-class MethodReagentsALNS(Method):
+class MethodNewAlgo(Method):
     def __init__(
         self,
-        agents: AgentDictReagentsALNS,
+        agents: AgentDictNewAlgo,
         model: Model,
         env: Environment,
         config: OmegaConf,
@@ -130,12 +47,6 @@ class MethodReagentsALNS(Method):
         self.origin = float(config.origin)
         self.min_steps = int(config.min_steps)
         self.num_evaluations = int(config.num_evaluations)
-        
-        self.alns_score_solved = float(getattr(config, "alns_score_solved", 10.0))
-        self.alns_score_new_best = float(getattr(config, "alns_score_new_best", 5.0))
-        self.alns_score_improved = float(getattr(config, "alns_score_improved", 2.0))
-        self.alns_score_neutral = float(getattr(config, "alns_score_neutral", 0.5))
-        self.alns_score_worse = float(getattr(config, "alns_score_worse", 0.0))
 
         self.features = {
             "updating_priors": bool(getattr(config, "updating_priors", True)),
@@ -145,13 +56,6 @@ class MethodReagentsALNS(Method):
         }
 
         self.priors = np.ones((self.num_steps, len(self.step_agents))) / max(len(self.step_agents), 1)
-        
-        self.allocator = ALNSFleetAllocator(
-            num_agent_types=len(self.step_agents),
-            reaction_factor=(getattr(config, "alns_reaction_factor", 0.2)),
-            min_weight=(getattr(config, "alns_min_weight", 0.05)),
-            min_count_per_type=int(getattr(config, "alns_min_count_per_type", 1)),
-        )
 
     def _normalize_score(self, score) -> float:
         if isinstance(score, (int, float)):
@@ -203,71 +107,37 @@ class MethodReagentsALNS(Method):
         idx: int,
         step: int,
     ):
-        width = len(records)
-
-        fleet_counts = self.allocator.allocate(width)
-
         agent_indices = []
-        for agent_index, count in enumerate(fleet_counts):
-            agent_indices.extend([agent_index] * count)
-
-        agent_indices = agent_indices[:width]
-
-        while len(agent_indices) < width:
-            best_agent = int(np.argmax(self.allocator.get_probs()))
-            agent_indices.append(best_agent)
-
-        random.shuffle(agent_indices)
-
         coroutines = []
 
         for i, record in enumerate(records):
-            agent_index = agent_indices[i]
+            agent_index = self._sample_agent_index(record.depth)
             spec = self.step_agents[agent_index]
-
+            agent_indices.append(agent_index)
             coroutines.append(
                 spec["agent"].act(
                     model=self.model,
                     state=record.state,
                     n=1,
                     namespace=namespace,
-                    request_id=(
-                        f"idx{idx}-step{step}-"
-                        f"{hash(record.state)}-agent{agent_index + 100 * i}"
-                    ),
+                    request_id=f"idx{idx}-step{step}-{hash(record.state)}-agent{agent_index + 100 * i}",
                     params=spec["params"],
                 )
             )
 
         action_batches = await asyncio.gather(*coroutines)
-
         new_records = []
-
         for record, actions in zip(records, action_batches):
             if not actions:
-                new_records.append(
-                    SearchRecord(
-                        state=record.state,
-                        value=record.value,
-                        depth=record.depth + 1,
-                    )
-                )
+                new_records.append(SearchRecord(state=record.state, value=record.value, depth=record.depth + 1))
                 continue
-
             try:
                 new_state = self.env.step(record.state, actions[0])
             except Exception:
                 new_state = record.state
+            new_records.append(SearchRecord(state=new_state, value=record.value, depth=record.depth + 1))
 
-            new_records.append(
-                SearchRecord(
-                    state=new_state,
-                    value=record.value,
-                    depth=record.depth + 1,
-                )
-            )
-
-        return new_records, agent_indices, fleet_counts
+        return new_records, agent_indices
 
     async def _evaluate_states(
         self,
@@ -419,31 +289,6 @@ class MethodReagentsALNS(Method):
         ]
         return records, visited_states
 
-    def compute_alns_score(
-        self,
-        old_value: float,
-        new_value: float,
-        best_value_before_step: float,
-        solved: bool = False,
-        terminal: bool = False,
-    ) -> float:
-        if solved:
-            return self.alns_score_solved
-
-        if terminal and new_value < old_value:
-            return self.alns_score_worse
-
-        if new_value > best_value_before_step:
-            return self.alns_score_new_best
-
-        if new_value > old_value:
-            return self.alns_score_improved
-
-        if new_value == old_value:
-            return self.alns_score_neutral
-
-        return 0.0 # could be self.alns_score_worse or a separate score for worse outcomes
-
     async def solve(self, idx: int, state: State, namespace: str, value_cache: dict = None):
         random.seed(idx)
         np.random.seed(idx)
@@ -461,62 +306,15 @@ class MethodReagentsALNS(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
-        logger.info("Runtime Agent Distribution Information:")
-
         for step in range(self.num_steps):
-            best_value_before_step = max(record.value for record in records)
-
-            new_records, agent_indices, fleet_counts = await self._mutate_states(
-                records,
-                namespace,
-                idx,
-                step,
-            )
-            logger.info(
-                '\t' + json.dumps({
-                    "step": step,
-                    "width": len(records),
-                    "fleet_counts": fleet_counts,
-                    "weights": self.allocator.weights.tolist(),
-                    "probs": self.allocator.get_probs().tolist(),
-                    "num_act": fleet_counts[0],
-                    "num_react": fleet_counts[1],
-                })
-            )
-
+            new_records, agent_indices = await self._mutate_states(records, namespace, idx, step)
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
-                new_records,
-                value_cache,
-                namespace,
-                idx,
-                step,
+                new_records, value_cache, namespace, idx, step
             )
 
-            terminal_set = set(terminal_indices)
-            solved_set = set(solved_indices)
-
-            for i, (old_record, new_record, agent_index) in enumerate(
-                zip(records, new_records, agent_indices)
-            ):
-                score = self.compute_alns_score(
-                    old_value=old_record.value,
-                    new_value=new_record.value,
-                    best_value_before_step=best_value_before_step,
-                    solved=i in solved_set,
-                    terminal=i in terminal_set,
-                )
-
-                self.allocator.add_result(agent_index, score)
-
-            logger.info(
-                '\t' + json.dumps({
-                    "step": step,
-                    "segment_scores": self.allocator.segment_scores.tolist(),
-                    "segment_counts": self.allocator.segment_counts.tolist(),
-                })
-            )
-            self.allocator.update_weights()
-            
+            self.priors = np.nan_to_num(self.priors, nan=0.0)
+            self.priors /= self.priors.sum(axis=-1, keepdims=True)
+            self._update_priors(agent_indices, records, new_records)
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
@@ -529,7 +327,5 @@ class MethodReagentsALNS(Method):
 
             if not records:
                 break
-            
-        logger.info("")
 
         return [record.state for record in records] if records else [state]
