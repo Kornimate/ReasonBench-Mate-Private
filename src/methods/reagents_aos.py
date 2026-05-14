@@ -11,10 +11,16 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
-from .new_algo import StepAgentSpec, DifficultyAgentSpec, SearchRecord
+from .new_algo import DifficultyAgentSpec, SearchRecord
 
 logger = logging.getLogger("__main__")
 
+
+class StepAgentInfo(TypedDict):
+    agent_type: str
+    agent: Agent
+    params: DecodingParameters
+    num_agents: int
 
 @dataclass
 class AOSAllocator:
@@ -99,7 +105,7 @@ class AOSAllocator:
 class AgentDictReagentsAOS(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
-    step_agents: list[StepAgentSpec]
+    step_agents: list[StepAgentInfo]
     difficulty_agent: Optional[DifficultyAgentSpec]
 
 

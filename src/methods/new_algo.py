@@ -12,7 +12,6 @@ from ..utils import Resampler
 
 
 class StepAgentSpec(TypedDict):
-    agent_type: str
     agent: Agent
     params: DecodingParameters
     num_agents: int
