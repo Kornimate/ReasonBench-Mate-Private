@@ -1,4 +1,4 @@
-$benchmark = "mtsamples"
+$benchmark = "mimic_rrs"
 # $method = "reagents_aos"
 # $method = "reagents_alns"
 $method = "reagents_fas"
