@@ -1,6 +1,4 @@
 import asyncio
-import json
-import logging
 import random
 from dataclasses import dataclass, field
 from typing import Optional, TypedDict
@@ -10,10 +8,9 @@ from omegaconf import OmegaConf
 
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
+from ..logging_utils import log_event, log_section, log_section_end
 from ..utils import Resampler
 from .reagents import DifficultyAgentSpec, SearchRecord
-
-logger = logging.getLogger("__main__")
 
 
 class StepAgentInfo(TypedDict):
@@ -379,7 +376,7 @@ class MethodReagentsAOS(Method):
             "avg_reward_react": avg_reward_by_agent.get("react"),
             "solved": bool(solved_indices),
         }
-        logger.info("\tAOS_STEP %s", json.dumps(self._round_log_value(log_entry)))
+        log_event("AOS_STEP", log_entry)
 
     def _filter_states(
         self,
@@ -471,7 +468,7 @@ class MethodReagentsAOS(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
-        logger.info("Runtime Agent Distribution Information:")
+        log_section("Runtime Agent Distribution Information:")
 
         for step in range(self.num_steps):
             new_records, agent_indices, fleet_counts = await self._mutate_states(
@@ -505,7 +502,7 @@ class MethodReagentsAOS(Method):
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
-                logger.info("")
+                log_section_end()
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)
@@ -516,6 +513,6 @@ class MethodReagentsAOS(Method):
             if not records:
                 break
 
-        logger.info("")
+        log_section_end()
 
         return [record.state for record in records] if records else [state]

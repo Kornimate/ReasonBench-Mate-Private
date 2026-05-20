@@ -1,8 +1,6 @@
 import asyncio
 import random
 import math
-import logging
-import json
 from dataclasses import dataclass
 from typing import Optional, TypedDict
 
@@ -11,11 +9,10 @@ from omegaconf import OmegaConf
 
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
+from ..logging_utils import log_event, log_section, log_section_end
 from ..utils import Resampler
 from .reagents import DifficultyAgentSpec, SearchRecord
 from .reagents_aos import StepAgentInfo
-
-logger = logging.getLogger("__main__")
 
 
 @dataclass
@@ -493,7 +490,7 @@ class MethodReagentsFAS(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
-        logger.info("Runtime Agent Distribution Information:")
+        log_section("Runtime Agent Distribution Information:")
 
         for step in range(self.num_steps):
             difficulty = getattr(self, "current_difficulty", 0.5)
@@ -506,14 +503,12 @@ class MethodReagentsFAS(Method):
                 difficulty=difficulty,
             )
             
-            logger.info(
-                '\tFAS_STEP ' + json.dumps({
-                    "step": step,
-                    "width": len(records),
-                    "fleet_counts": fleet_counts,
-                    "selector_features": selector_features,
-                })
-            )
+            log_event("FAS_STEP", {
+                "step": step,
+                "width": len(records),
+                "fleet_counts": fleet_counts,
+                "selector_features": selector_features,
+            })
 
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
                 new_records,
@@ -526,7 +521,7 @@ class MethodReagentsFAS(Method):
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
-                logger.info("")
+                log_section_end()
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)
@@ -537,6 +532,6 @@ class MethodReagentsFAS(Method):
             if not records:
                 break
 
-        logger.info("")
+        log_section_end()
 
         return [record.state for record in records] if records else [state]

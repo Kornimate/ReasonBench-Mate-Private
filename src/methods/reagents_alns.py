@@ -1,7 +1,5 @@
 import asyncio
-import logging
 import random
-import json
 from dataclasses import dataclass, field
 from typing import Optional, TypedDict
 
@@ -10,11 +8,10 @@ from omegaconf import OmegaConf
 
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
+from ..logging_utils import log_event, log_section, log_section_end
 from ..utils import Resampler
 from .reagents import DifficultyAgentSpec, SearchRecord
 from .reagents_aos import StepAgentInfo
-
-logger = logging.getLogger("__main__")
 
 @dataclass
 class ALNSFleetAllocator:
@@ -428,7 +425,7 @@ class MethodReagentsALNS(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
-        logger.info("Runtime Agent Distribution Information:")
+        log_section("Runtime Agent Distribution Information:")
 
         for step in range(self.num_steps):
             best_value_before_step = max(record.value for record in records)
@@ -439,19 +436,17 @@ class MethodReagentsALNS(Method):
                 idx,
                 step,
             )
-            logger.info(
-                '\tALNS_STEP ' + json.dumps({
-                    "step": step,
-                    "width": len(records),
-                    "fleet_counts": fleet_counts,
-                    "weights": self.allocator.weights.tolist(),
-                    "probs": self.allocator.get_probs().tolist(),
-                    "agent_counts": {
-                        spec.get("agent_type", f"agent_{agent_index}"): fleet_counts[agent_index]
-                        for agent_index, spec in enumerate(self.step_agents)
-                    },
-                })
-            )
+            log_event("ALNS_STEP", {
+                "step": step,
+                "width": len(records),
+                "fleet_counts": fleet_counts,
+                "weights": self.allocator.weights.tolist(),
+                "probs": self.allocator.get_probs().tolist(),
+                "agent_counts": {
+                    spec.get("agent_type", f"agent_{agent_index}"): fleet_counts[agent_index]
+                    for agent_index, spec in enumerate(self.step_agents)
+                },
+            })
 
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
                 new_records,
@@ -477,19 +472,17 @@ class MethodReagentsALNS(Method):
 
                 self.allocator.add_result(agent_index, score)
 
-            logger.info(
-                '\tALNS_SEGMENT ' + json.dumps({
-                    "step": step,
-                    "segment_scores": self.allocator.segment_scores.tolist(),
-                    "segment_counts": self.allocator.segment_counts.tolist(),
-                })
-            )
+            log_event("ALNS_SEGMENT", {
+                "step": step,
+                "segment_scores": self.allocator.segment_scores.tolist(),
+                "segment_counts": self.allocator.segment_counts.tolist(),
+            })
             self.allocator.update_weights()
             
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
-                logger.info("")
+                log_section_end()
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)
@@ -500,6 +493,6 @@ class MethodReagentsALNS(Method):
             if not records:
                 break
             
-        logger.info("")
+        log_section_end()
 
         return [record.state for record in records] if records else [state]
