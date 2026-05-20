@@ -5,7 +5,7 @@ import os
 if not os.path.exists("results"):
     os.makedirs("results")
 
-methods = ["cot_sc", "cot", "foa", "got", "het_foa", "io", "new_algo", "rap", "react", "tot_bfs", "tot_dfs"]
+methods = ["cot_sc", "cot", "foa", "got", "heterogeneous_foa", "io", "reagents", "rap", "react", "tot_bfs", "tot_dfs"]
 
 bar_values = [0.6, 0.6, 0.9, 0.4, 0.8, 0.5, 0.8, 0.8, 0.8, 0.9, 0.3]
 

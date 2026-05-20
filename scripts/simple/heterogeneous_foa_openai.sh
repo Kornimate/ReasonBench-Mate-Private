@@ -1,7 +1,7 @@
 #!/bin/bash
 
 benchmark="scibench"
-method="het_foa"
+method="heterogeneous_foa"
 split="mini"
 
 provider="openai"

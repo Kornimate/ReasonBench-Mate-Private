@@ -16,17 +16,17 @@ class StepAgentSpec(TypedDict):
 
 
 @AgentDictFactory.register
-class AgentDictHetFOA(TypedDict):
+class AgentDictHeterogeneousFOA(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
     step_agents: list[StepAgentSpec]
 
 
 @MethodFactory.register
-class MethodHetFOA(Method):
+class MethodHeterogeneousFOA(Method):
     def __init__(
         self,
-        agents: AgentDictHetFOA,
+        agents: AgentDictHeterogeneousFOA,
         model: Model,
         env: Environment,
         config: OmegaConf,
@@ -49,7 +49,7 @@ class MethodHetFOA(Method):
         total_agents = sum(spec["num_agents"] for spec in self.step_agents)
         if total_agents != self.num_agents:
             raise ValueError(
-                f"het_foa expected {self.num_agents} total step agents, got {total_agents}"
+                f"heterogeneous_foa expected {self.num_agents} total step agents, got {total_agents}"
             )
 
     def _get_agent_spec(self, index: int) -> StepAgentSpec:

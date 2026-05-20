@@ -17,7 +17,7 @@ foa:
   num_evaluations: 3
   origin: 20
 
-het_foa:
+heterogeneous_foa:
   num_agents: 3
   num_steps: 6
   k: 2
@@ -32,7 +32,7 @@ het_foa:
     - agent_type: "react"
       num_agents: 1
 
-new_algo:
+reagents:
   width: 4
   num_steps: 6
   max_value: 10

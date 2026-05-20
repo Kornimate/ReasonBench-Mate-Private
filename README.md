@@ -115,7 +115,7 @@ python scripts/simple/simple.py \
 | Argument | Description |
 |----------|-------------|
 | `--benchmark` | Task name: `game24`, `humaneval`, `hotpotqa`, `scibench`, `hle`, `sonnetwriting` |
-| `--method` | Reasoning method: `io`, `cot`, `cot_sc`, `foa`, `het_foa`, `new_algo`, `tot_bfs`, `tot_dfs`, `got`, `react`, `rap`, `reagents` |
+| `--method` | Reasoning method: `io`, `cot`, `cot_sc`, `foa`, `heterogeneous_foa`, `reagents`, `tot_bfs`, `tot_dfs`, `got`, `react`, `rap` |
 | `--split` | Dataset split: `train`, `validation`, `test`, `mini` |
 | `--provider` | LLM provider: `openai`, `gemini`, `anthropic`, `groq`, `together` |
 | `--model` | Model identifier (e.g., `gpt-4.1-nano`, `claude-haiku-4-5`) |

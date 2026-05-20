@@ -148,13 +148,7 @@ class MethodFactory:
             agents = {
                 "step": AgentFactory.get("react", benchmark),
             }
-        elif method == "reagents":
-            agents = {
-                "step": AgentFactory.get("act", benchmark),
-                "evaluate": AgentFactory.get("evaluate", benchmark),
-                "predict": AgentFactory.get("population", benchmark),
-            }
-        elif method == "het_foa":
+        elif method == "heterogeneous_foa":
             agents = {
                 "evaluate": AgentFactory.get("evaluate", benchmark),
                 "step_agents": cls._build_step_agent_specs(
@@ -165,7 +159,7 @@ class MethodFactory:
                     default_count=getattr(config, "num_agents", 1),
                 ),
             }
-        elif method == "new_algo":
+        elif method == "reagents":
             agents = {
                 "evaluate": AgentFactory.get("evaluate", benchmark),
                 "step_agents": cls._build_step_agent_specs(

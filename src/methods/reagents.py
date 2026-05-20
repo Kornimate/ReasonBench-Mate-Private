@@ -31,7 +31,7 @@ class SearchRecord:
 
 
 @AgentDictFactory.register
-class AgentDictNewAlgo(TypedDict):
+class AgentDictReagents(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
     step_agents: list[StepAgentSpec]
@@ -39,10 +39,10 @@ class AgentDictNewAlgo(TypedDict):
 
 
 @MethodFactory.register
-class MethodNewAlgo(Method):
+class MethodReagents(Method):
     def __init__(
         self,
-        agents: AgentDictNewAlgo,
+        agents: AgentDictReagents,
         model: Model,
         env: Environment,
         config: OmegaConf,

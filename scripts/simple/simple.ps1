@@ -1,5 +1,5 @@
 $benchmark = "hotpotqa"
-$method = "het_foa"
+$method = "heterogeneous_foa"
 $split = "mini"
 
 $provider = "openai"

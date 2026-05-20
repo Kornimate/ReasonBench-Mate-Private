@@ -17,7 +17,7 @@ foa:
   num_evaluations: 3
   origin: 120
 
-het_foa:
+heterogeneous_foa:
   num_agents: 7
   num_steps: 7
   k: 1
@@ -32,7 +32,7 @@ het_foa:
     - agent_type: "react"
       num_agents: 3
 
-new_algo:
+reagents:
   width: 5
   num_steps: 6
   max_value: 20
@@ -79,9 +79,3 @@ rap:
 react:
   num_steps: 10
 
-reagents:
-  population_size: 5
-  max_steps: 6
-  adaptive_scaling: true
-  heterogeneous_agents: true
-  selection: "tournament"

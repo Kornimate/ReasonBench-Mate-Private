@@ -7,8 +7,8 @@ from .react import AgentDictReact, MethodReact
 from .io import AgentDictIO, MethodIO
 from .cot import AgentDictCOT, MethodCOT
 from .cot_sc import AgentDictCoT, MethodCOT_SC
-from .het_foa import AgentDictHetFOA, MethodHetFOA
-from .new_algo import AgentDictNewAlgo, MethodNewAlgo
+from .heterogeneous_foa import AgentDictHeterogeneousFOA, MethodHeterogeneousFOA
+from .reagents import AgentDictReagents, MethodReagents
 from .reagents_aos import AgentDictReagentsAOS, MethodReagentsAOS
 from .reagents_alns import AgentDictReagentsALNS, MethodReagentsALNS
 from .reagents_fas import AgentDictReagentsFAS, MethodReagentsFAS

@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
-from .new_algo import DifficultyAgentSpec, SearchRecord
+from .reagents import DifficultyAgentSpec, SearchRecord
 
 logger = logging.getLogger("__main__")
 
