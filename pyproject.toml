@@ -1,0 +1,3 @@
+[tool.poe.tasks]
+save = "python "
+visualize = "python "

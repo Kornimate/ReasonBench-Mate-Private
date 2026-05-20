@@ -1,0 +1,10 @@
+actions:
+  save:
+    description: "Save the current state of the logs and results of the experiments ran from scripts."
+    log_path: "C:\\Users\\korni\\Documents\\UNI\\ReasonBench-Mate-Private\\logs"
+    save_path: "C:\\Users\\korni\\Documents\\UNI\\Files\\Logs\\auto"
+  visualize:
+    description: "Visualize the results of the experiments ran from scripts and resulted in logs."
+    log_path: "C:\\Users\\korni\\Documents\\UNI\\ReasonBench-Mate-Private\\logs"
+    raw_path: "C:\\Users\\korni\\Documents\\UNI\\ReasonBench-Mate-Private\\logs\\raw_calls"
+    output_path: "C:\\Users\\korni\\Documents\\UNI\\ReasonBench-Mate-Private\\results"

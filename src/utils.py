@@ -29,6 +29,15 @@ def parse_n_split(split: str) -> int | None:
         raise ValueError(f"Invalid n split size: {split}")
     return n
 
+
+def deterministic_shuffle(items: List[Any], seed: int = 0) -> List[Any]:
+    """
+    Returns a deterministically shuffled copy of a sequence.
+    """
+    shuffled = list(items)
+    random.Random(seed).shuffle(shuffled)
+    return shuffled
+
 def assign_ns(length: int, fraction: float) -> List[int]:
     """
     Assigns a list of integers of valuesfrom 0 to length-1, where a fraction of the list
