@@ -5,7 +5,7 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 import logging
-from .logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, terminal_summary
+from ..logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, terminal_summary
 
 logger = logging.getLogger("__main__")
 

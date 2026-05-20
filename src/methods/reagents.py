@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
-from .logging_utils import log_event, log_section, log_section_end, score_summary, terminal_summary
+from ..logging_utils import log_event, log_section, log_section_end, score_summary, terminal_summary
 
 
 class StepAgentSpec(TypedDict):

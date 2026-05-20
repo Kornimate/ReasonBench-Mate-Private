@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 from ..utils import Resampler
-from .logging_utils import action_summary, log_event, log_section, log_section_end, state_depths, terminal_summary
+from ..logging_utils import action_summary, log_event, log_section, log_section_end, state_depths, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
