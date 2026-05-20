@@ -5,7 +5,7 @@ from typing import Tuple
 from .state import StateHumanEval
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
-from ...utils import parse_n_split
+from ...utils import deterministic_shuffle, parse_n_split
 
 @BenchmarkFactory.register
 class BenchmarkHumanEval(Benchmark):
@@ -20,10 +20,12 @@ class BenchmarkHumanEval(Benchmark):
         df.reset_index(inplace=True)
         data = list(zip(df['index'], df['prompt'], df['entry_point'], df['test']))
 
-        if split == "mini":
+        if split == "full":
+            self.data = data
+        elif split == "mini":
             self.data = random.sample(data, 10)
         elif split.startswith("n["):
-            self.data = data[:parse_n_split(split)]
+            self.data = deterministic_shuffle(data)[:parse_n_split(split)]
         elif split == "train":
             self.data = random.sample(data, 50)
         elif split == "validation":

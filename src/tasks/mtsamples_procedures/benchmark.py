@@ -84,12 +84,12 @@ def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
 
 
 def split_instances(instances: List[Dict[str, str]], split: str) -> List[Dict[str, str]]:
+    if split == "full":
+        return instances
     if split == "single":
         return instances[:1]
     if split == "mini":
         return instances[:10]
-    if split.startswith("n["):
-        return instances[:parse_n_split(split)]
 
     shuffled = list(instances)
     random.Random(0).shuffle(shuffled)
@@ -102,6 +102,8 @@ def split_instances(instances: List[Dict[str, str]], split: str) -> List[Dict[st
     validation = shuffled[n_train:n_train + n_validation]
     test = shuffled[n_train + n_validation:]
 
+    if split.startswith("n["):
+        return shuffled[:parse_n_split(split)]
     if split == "train":
         return train
     if split == "validation":

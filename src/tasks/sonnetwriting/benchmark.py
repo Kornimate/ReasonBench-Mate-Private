@@ -6,7 +6,7 @@ import pandas as pd
 from .state import StateSonnetWriting
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
-from ...utils import parse_n_split
+from ...utils import deterministic_shuffle, parse_n_split
 
 
 @BenchmarkFactory.register
@@ -45,12 +45,14 @@ class BenchmarkSonnetWriting(Benchmark):
         test_set_idxs = random.sample(list(valid_idxs), 50)
         valid_idxs = valid_idxs - set(validation_set_idxs)
 
-        if split == "single":
+        if split == "full":
+            self.data = data
+        elif split == "single":
             self.data = data[:1]
         elif split == "mini":
             self.data = [data[i] for i in mini_set_idxs]
         elif split.startswith("n["):
-            self.data = data[:parse_n_split(split)]
+            self.data = deterministic_shuffle(data)[:parse_n_split(split)]
         elif split == "train":
             self.data = [data[i] for i in train_set_idxs]
         elif split == "validation":

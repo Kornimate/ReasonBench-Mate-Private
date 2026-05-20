@@ -4,7 +4,7 @@ from typing import Tuple
 from .state import StateSciBench
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
-from ...utils import parse_n_split
+from ...utils import deterministic_shuffle, parse_n_split
 
 @BenchmarkFactory.register
 class BenchmarkSciBench(Benchmark):
@@ -27,19 +27,22 @@ class BenchmarkSciBench(Benchmark):
         
         # Calculate split sizes
         single_instance = data.pop(0)
+        full_data = [single_instance] + data
+        shuffled = deterministic_shuffle(full_data)
         total = len(data)
         mini = round(total * 0.05)
         train = round(total * 0.10)
         valid = round(total * 0.15)
         
         
-        if split == "single":
+        if split == "full":
+            self.data = full_data
+        elif split == "single":
             self.data = [single_instance]
         elif split == "mini":
             self.data = data[:mini]
         elif split.startswith("n["):
-            n_split = parse_n_split(split)
-            self.data = [single_instance] + data[:max(0, n_split - 1)]
+            self.data = shuffled[:parse_n_split(split)]
         elif split == "train":
             self.data = data[mini: mini + train]
         elif split == "validation":

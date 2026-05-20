@@ -8,7 +8,7 @@ from .state import StateHLE
 from ... import BenchmarkFactory
 
 from ...typedefs import Benchmark
-from ...utils import parse_n_split
+from ...utils import deterministic_shuffle, parse_n_split
 
 
 @BenchmarkFactory.register
@@ -62,12 +62,15 @@ class BenchmarkHLE(Benchmark):
 
         test_set_idxs = random.sample(list(valid_idxs), other_size)
         valid_idxs = valid_idxs - set(test_set_idxs)
-        if split == "single":
+        
+        if split == "full":
+            self.data = data
+        elif split == "single":
             self.data = data[:1]
         elif split == "mini":
             self.data = [data[i] for i in mini_set_idxs]
         elif split.startswith("n["):
-            self.data = data[:parse_n_split(split)]
+            self.data = deterministic_shuffle(data)[:parse_n_split(split)]
         elif split == "train":
             self.data = [data[i] for i in train_set_idxs]
         elif split == "validation":
