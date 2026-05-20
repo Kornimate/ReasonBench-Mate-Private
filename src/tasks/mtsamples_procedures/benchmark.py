@@ -9,6 +9,7 @@ from helm.benchmark.scenarios.mtsamples_procedures_scenario import (
 from .state import StateMTSamplesProcedures
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 
 def _get_nested_attr(obj: Any, attr_path: str, default: Any = None) -> Any:
@@ -87,6 +88,8 @@ def split_instances(instances: List[Dict[str, str]], split: str) -> List[Dict[st
         return instances[:1]
     if split == "mini":
         return instances[:10]
+    if split.startswith("n["):
+        return instances[:parse_n_split(split)]
 
     shuffled = list(instances)
     random.Random(0).shuffle(shuffled)

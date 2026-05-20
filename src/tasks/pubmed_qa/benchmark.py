@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 from .state import StatePubMedQA
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 MEDHELM_TASKS_PATH = Path("datasets/medical/medhelm_tasks.json")
 
@@ -115,6 +116,8 @@ def split_instances(instances: List[Dict[str, str]], split: str) -> List[Dict[st
         return instances[:1]
     if split == "mini":
         return instances[:10]
+    if split.startswith("n["):
+        return instances[:parse_n_split(split)]
 
     shuffled = list(instances)
     random.Random(0).shuffle(shuffled)

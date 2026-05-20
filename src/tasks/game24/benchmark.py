@@ -4,6 +4,7 @@ from typing import Tuple
 from .state import StateGame24
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 @BenchmarkFactory.register
 class BenchmarkGame24(Benchmark):
@@ -15,10 +16,12 @@ class BenchmarkGame24(Benchmark):
         df.reset_index(inplace=True)
         data = list(zip(df['index'], df['Puzzles']))
 
-        if  split == "single":
+        if split == "single":
             self.data = data[0:1]
         elif split == "mini":
             self.data = data[:10]
+        elif split.startswith("n["):
+            self.data = data[:parse_n_split(split)]
         elif split == "train":
             self.data = data[850:875] + data[1025:1050]
         elif split == "validation":

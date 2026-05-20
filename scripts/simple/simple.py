@@ -88,7 +88,7 @@ async def run(args, trial, cache_path):
     
 
     # Benchmark
-    benchmark = BenchmarkFactory.get(args.benchmark, split=args.split, max_len=50)
+    benchmark = BenchmarkFactory.get(args.benchmark, split=args.split)
 
     # Initial logging
     log_path = f"logs/simple/{args.model}/{args.benchmark}/{args.method}_{args.split}.log"

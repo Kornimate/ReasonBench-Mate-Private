@@ -6,6 +6,7 @@ import pandas as pd
 from .state import StateMathArena
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 import sys
 
@@ -19,7 +20,7 @@ def get_split_sizes(total_size, proportions=(0.1, 0.4, 0.25, 0.25)):
 class BenchmarkMathArena(Benchmark):
     
 
-    def __init__(self, path: str, split: str = "mini"):
+    def __init__(self, path: str, split: str = "mini", max_len: int = None):
         """
         Initializes the benchmark with the dataset.
 
@@ -62,8 +63,10 @@ class BenchmarkMathArena(Benchmark):
 
         if split == "single":
             self.data = data[:1]
-        if split == "mini":
+        elif split == "mini":
             self.data = [data[i] for i in mini_set_idxs]
+        elif split.startswith("n["):
+            self.data = data[:parse_n_split(split)]
         elif split == "train":
             self.data = [data[i] for i in train_set_idxs]
         elif split == "validation":
@@ -72,6 +75,9 @@ class BenchmarkMathArena(Benchmark):
             self.data = [data[i] for i in test_set_idxs]
         else:
             raise ValueError("Invalid set name")
+
+        if max_len:
+            self.data = self.data[:max_len]
 
     def __len__(self) -> int:
         """

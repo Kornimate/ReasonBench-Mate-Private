@@ -11,6 +11,24 @@ from argparse import Namespace
 from omegaconf import OmegaConf
 from typing import List, Awaitable, Tuple, Any
 
+N_SPLIT_PATTERN = re.compile(r"^n\[(\d+)\]$")
+
+
+def parse_n_split(split: str) -> int | None:
+    """
+    Parses split names like n[50], returning the requested number of instances.
+    """
+    match = N_SPLIT_PATTERN.fullmatch(split)
+    if match is None:
+        if split.startswith("n["):
+            raise ValueError(f"Invalid n split format: {split}")
+        return None
+
+    n = int(match.group(1))
+    if n < 0:
+        raise ValueError(f"Invalid n split size: {split}")
+    return n
+
 def assign_ns(length: int, fraction: float) -> List[int]:
     """
     Assigns a list of integers of valuesfrom 0 to length-1, where a fraction of the list

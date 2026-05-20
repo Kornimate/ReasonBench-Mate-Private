@@ -88,7 +88,7 @@ async def run(args, trial, cache_path):
     
 
     # Benchmark
-    benchmark = BenchmarkFactory.get(args.benchmark, split=args.split, max_len=2)
+    benchmark = BenchmarkFactory.get(args.benchmark, split=args.split)
 
     for i in range(int(args.repeats)):
         print(f"Repeat {i+1}/{args.repeats}")

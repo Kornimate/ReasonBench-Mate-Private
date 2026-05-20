@@ -8,6 +8,7 @@ from .state import StateHLE
 from ... import BenchmarkFactory
 
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 
 @BenchmarkFactory.register
@@ -65,6 +66,8 @@ class BenchmarkHLE(Benchmark):
             self.data = data[:1]
         elif split == "mini":
             self.data = [data[i] for i in mini_set_idxs]
+        elif split.startswith("n["):
+            self.data = data[:parse_n_split(split)]
         elif split == "train":
             self.data = [data[i] for i in train_set_idxs]
         elif split == "validation":

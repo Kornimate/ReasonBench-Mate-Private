@@ -5,6 +5,7 @@ from typing import Tuple
 from .state import StateHumanEval
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 @BenchmarkFactory.register
 class BenchmarkHumanEval(Benchmark):
@@ -21,6 +22,8 @@ class BenchmarkHumanEval(Benchmark):
 
         if split == "mini":
             self.data = random.sample(data, 10)
+        elif split.startswith("n["):
+            self.data = data[:parse_n_split(split)]
         elif split == "train":
             self.data = random.sample(data, 50)
         elif split == "validation":

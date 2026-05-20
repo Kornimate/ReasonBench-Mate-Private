@@ -6,11 +6,12 @@ from typing import Tuple
 from .state import StateLogiQA
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 
 @BenchmarkFactory.register
 class BenchmarkLogiQA(Benchmark):
-    def __init__(self, path: str, split: str = "mini"):
+    def __init__(self, path: str, split: str = "mini", max_len: int = None):
 
         self.name = "logiqa"
 
@@ -41,6 +42,8 @@ class BenchmarkLogiQA(Benchmark):
             self.data = data[:1]
         elif split == "mini":
             self.data = [data[i] for i in mini_set_idxs]
+        elif split.startswith("n["):
+            self.data = data[:parse_n_split(split)]
         elif split == "train":
             self.data = [data[i] for i in train_set_idxs]
         elif split == "validation":
@@ -49,6 +52,9 @@ class BenchmarkLogiQA(Benchmark):
             self.data = [data[i] for i in test_set_idxs]
         else:
             raise ValueError("Invalid set name")
+
+        if max_len:
+            self.data = self.data[:max_len]
 
     def __len__(self) -> int:
         return len(self.data)

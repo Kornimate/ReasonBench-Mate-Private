@@ -4,6 +4,7 @@ from typing import Tuple
 from .state import StateSciBench
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
+from ...utils import parse_n_split
 
 @BenchmarkFactory.register
 class BenchmarkSciBench(Benchmark):
@@ -36,6 +37,9 @@ class BenchmarkSciBench(Benchmark):
             self.data = [single_instance]
         elif split == "mini":
             self.data = data[:mini]
+        elif split.startswith("n["):
+            n_split = parse_n_split(split)
+            self.data = [single_instance] + data[:max(0, n_split - 1)]
         elif split == "train":
             self.data = data[mini: mini + train]
         elif split == "validation":
