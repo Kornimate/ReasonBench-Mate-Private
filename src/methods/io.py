@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 from ..utils import Resampler
+from .logging_utils import action_summary, log_event, log_section, log_section_end, state_depths, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
@@ -60,4 +61,13 @@ class MethodIO(Method):
                 new_states.append(state)  # or whatever fallback you want
 
         states = new_states
+        log_section("IO Method Information:")
+        log_event("IO_RESULT", {
+            "idx": idx,
+            "n": self.n,
+            "actions": action_summary(actions),
+            "state_depths": state_depths(states),
+            "terminal": terminal_summary(self.env, states),
+        })
+        log_section_end()
         return states

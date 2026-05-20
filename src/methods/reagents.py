@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
+from .logging_utils import log_event, log_section, log_section_end, score_summary, terminal_summary
 
 
 class StepAgentSpec(TypedDict):
@@ -323,6 +324,7 @@ class MethodReagents(Method):
         ]
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
 
+        log_section("ReAgents Method Information:")
         for step in range(self.num_steps):
             new_records, agent_indices = await self._mutate_states(records, namespace, idx, step)
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
@@ -331,10 +333,36 @@ class MethodReagents(Method):
 
             self.priors = np.nan_to_num(self.priors, nan=0.0)
             self.priors /= self.priors.sum(axis=-1, keepdims=True)
+            old_width = width
+            old_values = [record.value for record in records]
+            new_values = [record.value for record in new_records]
             self._update_priors(agent_indices, records, new_records)
             width = self._update_width(records, new_records, width)
+            agent_types = [
+                self.step_agents[agent_index].get("agent_type", f"agent_{agent_index}")
+                for agent_index in agent_indices
+            ]
+            log_event("REAGENTS_STEP", {
+                "idx": idx,
+                "step": step,
+                "width": old_width,
+                "next_width": width,
+                "agent_indices": agent_indices,
+                "agent_types": agent_types,
+                "agent_counts": {
+                    agent_type: agent_types.count(agent_type)
+                    for agent_type in sorted(set(agent_types))
+                },
+                "old_values": score_summary(old_values),
+                "new_values": score_summary(new_values),
+                "terminal_indices": terminal_indices,
+                "solved_indices": solved_indices,
+                "priors": self.priors.tolist(),
+                "terminal": terminal_summary(self.env, [record.state for record in new_records]),
+            })
 
             if solved_indices:
+                log_section_end()
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)
@@ -345,4 +373,5 @@ class MethodReagents(Method):
             if not records:
                 break
 
+        log_section_end()
         return [record.state for record in records] if records else [state]

@@ -440,7 +440,7 @@ class MethodReagentsALNS(Method):
                 step,
             )
             logger.info(
-                '\t' + json.dumps({
+                '\tALNS_STEP ' + json.dumps({
                     "step": step,
                     "width": len(records),
                     "fleet_counts": fleet_counts,
@@ -478,7 +478,7 @@ class MethodReagentsALNS(Method):
                 self.allocator.add_result(agent_index, score)
 
             logger.info(
-                '\t' + json.dumps({
+                '\tALNS_SEGMENT ' + json.dumps({
                     "step": step,
                     "segment_scores": self.allocator.segment_scores.tolist(),
                     "segment_counts": self.allocator.segment_counts.tolist(),
@@ -489,6 +489,7 @@ class MethodReagentsALNS(Method):
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
+                logger.info("")
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)

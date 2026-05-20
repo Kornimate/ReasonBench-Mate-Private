@@ -6,8 +6,9 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 import numpy as np
+from .logging_utils import log_event, log_section, log_section_end, score_summary, terminal_summary
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("__main__")
 
 class Node:
     def __init__(self, state: State, parent: Optional['Node'] = None):
@@ -167,12 +168,26 @@ class MethodRAP(Method):
             
             logger.debug("Starting selection phase")
             node = await self.select(root)
+            selected_depth = len(node.actions)
+            selected_visits_before = node.visits
             
             if not node.is_terminal and len(node.children) < self.num_samples:
                 logger.debug("Starting expansion phase")
                 node = await self.expand(node, namespace, f"{request_id}-iter{iteration}")
                 if node.is_terminal and node.reward == 1.0:
                     logger.debug("Found solution during expansion!")
+                    log_event("RAP_ITERATION", {
+                        "idx": idx,
+                        "iteration": iteration,
+                        "selected_depth": selected_depth,
+                        "selected_visits_before": selected_visits_before,
+                        "expanded_children": len(node.parent.children) if node.parent else len(node.children),
+                        "node_depth": len(node.actions),
+                        "terminal": terminal_summary(self.env, [node.state]),
+                        "value": node.reward,
+                        "best_value": best_value,
+                        "solved": True,
+                    })
                     return node.state, node.actions
 
             logger.debug("Starting simulation phase")
@@ -187,6 +202,21 @@ class MethodRAP(Method):
                 best_actions = node.actions
                 logger.debug(f"Updated best state with value: {best_value}")
 
+            log_event("RAP_ITERATION", {
+                "idx": idx,
+                "iteration": iteration,
+                "selected_depth": selected_depth,
+                "selected_visits_before": selected_visits_before,
+                "node_depth": len(node.actions),
+                "root_visits": root.visits,
+                "root_children": len(root.children),
+                "node_children": len(node.children),
+                "value": value,
+                "best_value": best_value,
+                "best_action_count": len(best_actions),
+                "terminal": terminal_summary(self.env, [node.state]),
+            })
+
         logger.debug(f"MCTS search complete. Best value found: {best_value}")
         return best_state, best_actions
 
@@ -197,6 +227,7 @@ class MethodRAP(Method):
         
         root_state = state.clone(randomness=random.randint(0, MAX_SEED))
         logger.debug(f"Initialized root state: {root_state.current_state}")
+        log_section("RAP Method Information:")
         
         best_state, best_actions = await self.mcts_search(
             root_state, 
@@ -208,7 +239,23 @@ class MethodRAP(Method):
         is_final, reward = self.env.evaluate(best_state)
         if is_final and reward == 1.0:
             logger.debug("Found solution!")
+            log_event("RAP_RESULT", {
+                "idx": idx,
+                "best_action_count": len(best_actions),
+                "is_final": is_final,
+                "reward": reward,
+                "solved": True,
+            })
+            log_section_end()
             return [best_state]
 
         logger.debug("No solution found, returning best state")
+        log_event("RAP_RESULT", {
+            "idx": idx,
+            "best_action_count": len(best_actions),
+            "is_final": is_final,
+            "reward": reward,
+            "solved": False,
+        })
+        log_section_end()
         return [best_state]

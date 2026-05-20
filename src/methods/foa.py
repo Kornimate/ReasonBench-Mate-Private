@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 from ..utils import Resampler
+from .logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, state_depths, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
@@ -54,6 +55,7 @@ class MethodFOA(Method):
         states = [state.clone(randomness=random.randint(0, MAX_SEED)) for _ in range(self.num_agents)]
 
         solved = False
+        log_section("FoA Method Information:")
         for step in range(self.num_steps):
 
             if solved:
@@ -79,6 +81,15 @@ class MethodFOA(Method):
             # Early stop in case any state is solved
             if any(self.env.evaluate(state)[1] == 1 for state in states):
                 solved = True
+                log_event("FOA_STEP", {
+                    "idx": idx,
+                    "step": step,
+                    "num_agents": len(states),
+                    "actions": action_summary(actions),
+                    "state_depths": state_depths(states),
+                    "terminal": terminal_summary(self.env, states),
+                    "solved": solved,
+                })
                 break
 
             # Filter previously visited states records
@@ -88,6 +99,7 @@ class MethodFOA(Method):
 
             # Pruning : Failed = Finished not correctly
             failed = [i for i, state in enumerate(states) if self.env.is_final(state)]
+            replacements_count = len(failed)
             if visited_states != []:
                 replacements, _ = resampler.resample(visited_states.copy(), len(failed), self.resampling)
             else:
@@ -95,6 +107,8 @@ class MethodFOA(Method):
             states = [replacements.pop(0) if i in failed else state for i, state in enumerate(states)]
 
             # Evaluation phase
+            values = []
+            resampled_count = 0
             if step < self.num_steps-1 and self.k and step % self.k == 0:
                 
                 # Evaluate the states
@@ -119,7 +133,24 @@ class MethodFOA(Method):
 
                 # Resampling
                 states, resampled_idxs = resampler.resample(visited_states, self.num_agents, self.resampling)
+                resampled_count = len(resampled_idxs)
 
+            log_event("FOA_STEP", {
+                "idx": idx,
+                "step": step,
+                "num_agents": len(states),
+                "actions": action_summary(actions),
+                "failed_count": len(failed),
+                "replacement_count": replacements_count,
+                "visited_count": len(visited_states),
+                "evaluation": score_summary(values),
+                "resampled_count": resampled_count,
+                "state_depths": state_depths(states),
+                "terminal": terminal_summary(self.env, states),
+                "solved": solved,
+            })
+
+        log_section_end()
         if len(states) == 0:
             return [initial_state]
         else:

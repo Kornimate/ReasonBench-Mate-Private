@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 from typing import TypedDict
 
@@ -7,6 +8,9 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
+from .logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, state_depths, terminal_summary
+
+logger = logging.getLogger("__main__")
 
 
 class StepAgentSpec(TypedDict):
@@ -67,6 +71,13 @@ class MethodHeterogeneousFOA(Method):
         visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
         initial_state = state
         states = [state.clone(randomness=random.randint(0, MAX_SEED)) for _ in range(self.num_agents)]
+        agent_type_by_index = [
+            str(spec.get("agent_type", f"agent_{agent_index}"))
+            for spec in self.step_agents
+            for agent_index in range(spec["num_agents"])
+        ]
+
+        log_section("Heterogeneous FoA Method Information:")
 
         for step in range(self.num_steps):
             action_coroutines = []
@@ -97,6 +108,17 @@ class MethodHeterogeneousFOA(Method):
             states = next_states
 
             if any(self.env.evaluate(candidate_state)[1] == 1 for candidate_state in states):
+                log_event("HETEROGENEOUS_FOA_STEP", {
+                    "idx": idx,
+                    "step": step,
+                    "num_agents": len(states),
+                    "agent_types": agent_type_by_index,
+                    "actions": action_summary(actions_per_state),
+                    "state_depths": state_depths(states),
+                    "terminal": terminal_summary(self.env, states),
+                    "solved": True,
+                })
+                log_section_end()
                 return states
 
             remaining_steps = self.num_steps - (step + 1)
@@ -107,6 +129,7 @@ class MethodHeterogeneousFOA(Method):
             ]
 
             finished = [i for i, candidate_state in enumerate(states) if self.env.is_final(candidate_state)]
+            replacement_count = len(finished)
             if finished:
                 if visited_states:
                     replacements, _ = resampler.resample(visited_states.copy(), len(finished), self.resampling)
@@ -118,6 +141,8 @@ class MethodHeterogeneousFOA(Method):
                     )
                 states = [replacements.pop(0) if i in finished else candidate_state for i, candidate_state in enumerate(states)]
 
+            values = []
+            resampled_count = 0
             if step < self.num_steps - 1 and self.k and step % self.k == 0:
                 value_coroutines = [
                     self.eval_agent.act(
@@ -137,6 +162,24 @@ class MethodHeterogeneousFOA(Method):
                     if i not in finished:
                         visited_states.append((f"{i}.{step}", float(value), candidate_state))
 
-                states, _ = resampler.resample(visited_states, self.num_agents, self.resampling)
+                states, resampled_idxs = resampler.resample(visited_states, self.num_agents, self.resampling)
+                resampled_count = len(resampled_idxs)
 
+            log_event("HETEROGENEOUS_FOA_STEP", {
+                "idx": idx,
+                "step": step,
+                "num_agents": len(states),
+                "agent_types": agent_type_by_index,
+                "actions": action_summary(actions_per_state),
+                "finished_count": len(finished),
+                "replacement_count": replacement_count,
+                "visited_count": len(visited_states),
+                "evaluation": score_summary(values),
+                "resampled_count": resampled_count,
+                "state_depths": state_depths(states),
+                "terminal": terminal_summary(self.env, states),
+                "solved": False,
+            })
+
+        log_section_end()
         return states if states else [initial_state]

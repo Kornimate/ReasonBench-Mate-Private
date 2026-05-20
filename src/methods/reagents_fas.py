@@ -507,7 +507,7 @@ class MethodReagentsFAS(Method):
             )
             
             logger.info(
-                '\t' + json.dumps({
+                '\tFAS_STEP ' + json.dumps({
                     "step": step,
                     "width": len(records),
                     "fleet_counts": fleet_counts,
@@ -526,6 +526,7 @@ class MethodReagentsFAS(Method):
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
+                logger.info("")
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)

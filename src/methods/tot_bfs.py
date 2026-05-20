@@ -5,6 +5,7 @@ from typing import TypedDict
 from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
+from .logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
@@ -39,6 +40,7 @@ class MethodTOT_BFS(Method):
         randomness = idx
         random.seed(randomness)
         states = [state.clone(randomness=random.randint(0, MAX_SEED))]
+        log_section("ToT-BFS Method Information:")
 
         for step in range(self.num_steps):
 
@@ -63,6 +65,15 @@ class MethodTOT_BFS(Method):
                     state_proposals.append(self.env.step(state, action))
 
             if state_proposals == []:
+                log_event("TOT_BFS_STEP", {
+                    "idx": idx,
+                    "step": step,
+                    "frontier_size": len(states),
+                    "proposal_count": 0,
+                    "actions": action_summary(actions),
+                    "empty_proposals": True,
+                })
+                log_section_end()
                 return states
 
             # Evaluate all proposals
@@ -84,10 +95,23 @@ class MethodTOT_BFS(Method):
             state_value_pairs = list(zip(state_proposals, values))
             sorted_pairs = sorted(state_value_pairs, key=lambda x: x[1], reverse=True)
             states, values = map(list, zip(*sorted_pairs[:self.num_selections]))
+            solved = any(self.env.evaluate(state)[1] == 1 for state in states)
+            log_event("TOT_BFS_STEP", {
+                "idx": idx,
+                "step": step,
+                "frontier_size": len(states),
+                "proposal_count": len(state_proposals),
+                "selected_count": len(states),
+                "actions": action_summary(actions),
+                "values": score_summary(values),
+                "terminal": terminal_summary(self.env, states),
+                "solved": solved,
+            })
             
             # Early stopping condition
-            for state in states:
-                if self.env.evaluate(state)[1]==1:
-                    return states
+            if solved:
+                log_section_end()
+                return states
 
+        log_section_end()
         return states

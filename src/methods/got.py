@@ -5,6 +5,7 @@ from typing import TypedDict
 from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
+from .logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
@@ -47,6 +48,7 @@ class MethodGOT(Method):
         logger.debug(f"Solving game: {idx}")
 
         solved = False
+        log_section("GoT Method Information:")
         for step in range(self.num_steps):
             if solved:
                 logger.debug(f"Task {idx} solved at step {step - 1}.")
@@ -92,6 +94,15 @@ class MethodGOT(Method):
                     proposed_states.append(self.env.step(state, action))
             
             if proposed_states == []:
+                log_event("GOT_STEP", {
+                    "idx": idx,
+                    "step": step,
+                    "frontier_size": len(states),
+                    "generated": action_summary(generated_actions),
+                    "aggregated": action_summary(actions),
+                    "proposal_count": 0,
+                    "empty_proposals": True,
+                })
                 break
             
             # Early stop in case any state is solved
@@ -119,5 +130,19 @@ class MethodGOT(Method):
             state_value_pairs = list(zip(proposed_states, values))
             sorted_pairs = sorted(state_value_pairs, key=lambda x: x[1], reverse=True)
             states, values = map(list, zip(*sorted_pairs[:self.num_best]))
+            solved = any(self.env.evaluate(state)[1] == 1 for state in states)
+            log_event("GOT_STEP", {
+                "idx": idx,
+                "step": step,
+                "frontier_size": len(states),
+                "generated": action_summary(generated_actions),
+                "aggregated": action_summary(actions),
+                "proposal_count": len(proposed_states),
+                "selected_count": len(states),
+                "values": score_summary(values),
+                "terminal": terminal_summary(self.env, states),
+                "solved": solved,
+            })
         
+        log_section_end()
         return states

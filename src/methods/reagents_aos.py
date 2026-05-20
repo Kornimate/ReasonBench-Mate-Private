@@ -505,6 +505,7 @@ class MethodReagentsAOS(Method):
             width = self._update_width(records, new_records, width)
 
             if solved_indices:
+                logger.info("")
                 return [new_records[i].state for i in solved_indices]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)

@@ -5,6 +5,7 @@ from typing import TypedDict
 from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
+from .logging_utils import action_summary, log_event, log_section, log_section_end, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
@@ -31,6 +32,7 @@ class MethodReact(Method):
         randomness = idx
         random.seed(randomness)
         state = state.clone(randomness=random.randint(0, MAX_SEED))
+        log_section("ReAct Method Information:")
         
         for step in range(self.num_steps):
 
@@ -46,9 +48,30 @@ class MethodReact(Method):
             # Execute the action
             try:
                 state = self.env.step(state, action[0])
+                is_final, score = self.env.evaluate(state)
+                log_event("REACT_STEP", {
+                    "idx": idx,
+                    "step": step,
+                    "actions": action_summary(action),
+                    "state_depth": len(getattr(state, "steps", [])),
+                    "is_final": is_final,
+                    "score": score,
+                    "solved": score == 1,
+                })
 
-                if self.env.evaluate(state)[1] == 1:
+                if score == 1:
                     break
-            except:
+            except Exception as exc:
+                log_event("REACT_STEP", {
+                    "idx": idx,
+                    "step": step,
+                    "actions": action_summary(action),
+                    "error": str(exc),
+                })
                 pass
+        log_event("REACT_RESULT", {
+            "idx": idx,
+            "terminal": terminal_summary(self.env, [state]),
+        })
+        log_section_end()
         return [state]

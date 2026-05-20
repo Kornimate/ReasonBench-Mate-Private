@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 from ..utils import Resampler
+from .logging_utils import action_summary, log_event, log_section, log_section_end, terminal_summary
 logger = logging.getLogger(__name__)
 
 @AgentDictFactory.register
@@ -49,6 +50,16 @@ class MethodCOT_SC(Method):
         counts = Counter(votes)
         most_common_action = counts.most_common(1)[0][0]
         state = self.env.step(state, most_common_action)
+        log_section("CoT-SC Method Information:")
+        log_event("COT_SC_RESULT", {
+            "idx": idx,
+            "n": self.n,
+            "actions": action_summary(actions),
+            "vote_counts": counts.most_common(),
+            "selected_vote_count": counts[most_common_action],
+            "terminal": terminal_summary(self.env, [state]),
+        })
+        log_section_end()
         return [state]
 
     
