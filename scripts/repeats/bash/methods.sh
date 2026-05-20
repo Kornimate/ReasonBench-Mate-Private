@@ -1,25 +1,27 @@
 #!/bin/bash
 
-benchmarks=(
-  "game24"
-  "hle"
-  "hotpotqa"
-  "humaneval"
-  "scibench"
-  "sonnetwriting"
-  
+benchmark="hotpotqa"
+methods=(
+  "io"
+  "cot"
+  "cot_sc"
+  "react"
+  "tot_bfs"
+  "rap"
+  "foa"
+  "heterogeneous_foa"
+  "reagents"
 )
-method="io"
 split="test"
 repeats=10
 
 provider="openai"
-api_key="OPENAI_API_KEY_CLAN"
-model="gpt-4.1-nano"
+api_key="OPENAI_API_KEY_PERS"
+model="gpt-4.1-mini"
 
 source scripts/configs/$benchmark.env
 
-for benchmark in "${benchmarks[@]}"; do
+for method in "${methods[@]}"; do
   echo "Running benchmark=$benchmark with method=$method"
 
   # Reset MAX_COMPLETION_TOKENS to default from env
@@ -52,6 +54,6 @@ for benchmark in "${benchmarks[@]}"; do
       --value_cache \
       --repeats "$repeats"
 
-  echo "Finished benchmark=$benchmark"
+  echo "Finished method=$method"
   echo "-----------------------------------"
 done
