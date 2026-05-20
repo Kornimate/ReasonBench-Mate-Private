@@ -1,8 +1,8 @@
 from .agents import *
-from .environment import EnvironmentMTSamples
+from .environment import EnvironmentMTSamplesProcedures
 
 try:
-    from .benchmark import BenchmarkMTSamples
+    from .benchmark import BenchmarkMTSamplesProcedures
 except ImportError as exc:
     from ... import BenchmarkFactory
 
@@ -11,9 +11,9 @@ except ImportError as exc:
     _benchmark_import_error = exc
 
     @BenchmarkFactory.register
-    class BenchmarkMTSamples:
+    class BenchmarkMTSamplesProcedures:
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                "The MTSamples benchmark requires the optional HELM dependency "
+                "The MTSamplesProcedures benchmark requires the optional HELM dependency "
                 "(`helm.benchmark.scenarios.mtsamples_procedures_scenario`)."
             ) from _benchmark_import_error

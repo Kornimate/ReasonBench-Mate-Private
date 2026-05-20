@@ -5,7 +5,7 @@ import numpy as np
 
 from . import prompts as prompts
 from .environment import clean_generation
-from .state import StateMTSamples
+from .state import StateMTSamplesProcedures
 from ... import AgentFactory
 from ...typedefs import Agent, DecodingParameters, Model
 from ...utils import build_population_prediction_prompt, parse_population_prediction
@@ -28,11 +28,11 @@ def parse_candidate_drafts(response: str) -> List[str]:
     return [line for line in fallback if line]
 
 
-def format_cleaned_text(state: StateMTSamples) -> str:
+def format_cleaned_text(state: StateMTSamplesProcedures) -> str:
     return f"\n{state.note_text}"
 
 
-def build_prompt(template: str, state: StateMTSamples, current_draft: str = "None yet.") -> str:
+def build_prompt(template: str, state: StateMTSamplesProcedures, current_draft: str = "None yet.") -> str:
     return template.format(
         cleaned_text=format_cleaned_text(state),
         current_draft=current_draft or "None yet.",
@@ -40,11 +40,11 @@ def build_prompt(template: str, state: StateMTSamples, current_draft: str = "Non
 
 
 @AgentFactory.register
-class AgentIoMTSamples(Agent):
+class AgentIoMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         n: int,
         namespace: str,
         request_id: str,
@@ -64,11 +64,11 @@ class AgentIoMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentCotMTSamples(Agent):
+class AgentCotMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         n: int,
         namespace: str,
         request_id: str,
@@ -88,11 +88,11 @@ class AgentCotMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentActMTSamples(Agent):
+class AgentActMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         n: int,
         namespace: str,
         request_id: str,
@@ -110,11 +110,11 @@ class AgentActMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentPopulationMTSamples(Agent):
+class AgentPopulationMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         max_agents: int,
         namespace: str,
         request_id: str,
@@ -132,11 +132,11 @@ class AgentPopulationMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentBfsMTSamples(Agent):
+class AgentBfsMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         namespace: str,
         request_id: str,
         params: DecodingParameters,
@@ -153,11 +153,11 @@ class AgentBfsMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentAggregateMTSamples(Agent):
+class AgentAggregateMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         actions: List[str],
         k: int,
         namespace: str,
@@ -191,11 +191,11 @@ class AgentAggregateMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentReactMTSamples(Agent):
+class AgentReactMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         n: int,
         namespace: str,
         request_id: str,
@@ -213,11 +213,11 @@ class AgentReactMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentEvaluateMTSamples(Agent):
+class AgentEvaluateMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         n: int,
         namespace: str,
         request_id: str,
@@ -249,11 +249,11 @@ class AgentEvaluateMTSamples(Agent):
 
 
 @AgentFactory.register
-class AgentSelfEvaluateMTSamples(Agent):
+class AgentSelfEvaluateMTSamplesProcedures(Agent):
     @staticmethod
     async def act(
         model: Model,
-        state: StateMTSamples,
+        state: StateMTSamplesProcedures,
         n: int,
         namespace: str,
         request_id: str,

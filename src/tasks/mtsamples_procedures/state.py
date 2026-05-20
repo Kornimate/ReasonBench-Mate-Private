@@ -5,7 +5,7 @@ from ...typedefs import State
 
 
 @dataclass(frozen=True)
-class StateMTSamples(State):
+class StateMTSamplesProcedures(State):
     puzzle: str
     current_state: str
     steps: List[str]
@@ -24,8 +24,8 @@ class StateMTSamples(State):
             "steps": " -> ".join(self.steps),
         }
 
-    def clone(self, randomness: int = None) -> "StateMTSamples":
-        return StateMTSamples(
+    def clone(self, randomness: int = None) -> "StateMTSamplesProcedures":
+        return StateMTSamplesProcedures(
             puzzle=self.puzzle,
             current_state=self.current_state,
             steps=self.steps,

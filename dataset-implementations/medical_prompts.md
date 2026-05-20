@@ -3,7 +3,7 @@
 ```python
 from typing import Dict, Set
 
-############################# MTSAMPLES PROMPT TEMPLATE #############################
+############################# MTSAMPLES PROCEDURES PROMPT TEMPLATE #############################
 JURY_PROMPT_TEMPLATE = """You are a medical expert tasked with evaluating the quality of a
 generated response of a clinical scenario.
 Your goal is to assess how well the response addresses the patient case, follows clinical best practices,

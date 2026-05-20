@@ -15,7 +15,11 @@ class BenchmarkFactory:
         try:
             return cls.registry[key](path=f"datasets/dataset_{task}.csv.gz",*args, **kwargs)
         except KeyError:
-            raise ValueError(f"No benchmark found for task={task}")
+            fallback_key = key.replace("_", "")
+            try:
+                return cls.registry[fallback_key](path=f"datasets/dataset_{task}.csv.gz",*args, **kwargs)
+            except KeyError:
+                raise ValueError(f"No benchmark found for task={task}")
         
 class EnvironmentFactory:
     registry = {}
@@ -31,7 +35,11 @@ class EnvironmentFactory:
         try:
             return cls.registry[key](*args, **kwargs)
         except KeyError:
-            raise ValueError(f"No environment found for task={task}")
+            fallback_key = key.replace("_", "")
+            try:
+                return cls.registry[fallback_key](*args, **kwargs)
+            except KeyError:
+                raise ValueError(f"No environment found for task={task}")
     
 class AgentFactory:
     registry = {}
@@ -47,7 +55,11 @@ class AgentFactory:
         try:
             return cls.registry[key]#(*args, **kwargs) : Not initialized
         except KeyError:
-            raise ValueError(f"No agent found for type={agent_type}, benchmark={benchmark}")
+            fallback_key = key.replace("_", "")
+            try:
+                return cls.registry[fallback_key]
+            except KeyError:
+                raise ValueError(f"No agent found for type={agent_type}, benchmark={benchmark}")
 
 class AgentDictFactory:
     registry = {}

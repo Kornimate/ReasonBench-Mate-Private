@@ -10,14 +10,14 @@ from diskcache import Cache
 from pydantic import BaseModel, Field
 
 from .prompts import JURY_PROMPT, io as TASK_PROMPT
-from .state import StateMTSamples
+from .state import StateMTSamplesProcedures
 from ... import EnvironmentFactory
 from ...models.online import OnlineLLM
 from ...typedefs import Environment, MAX_SEED, Request
 
-cache = Cache(".cache/mtsamples_jury_cache")
+cache = Cache(".cache/mtsamples_procedures_jury_cache")
 
-MAX_LIKERT_SCORE = 5.0 # based on MTSamples evaluation criteria
+MAX_LIKERT_SCORE = 5.0 # based on MTSamplesProcedures evaluation criteria
 FINAL_SCORE_THRESHOLD = 3.8
 DEFAULT_JURY_SCORE = 1.0
 
@@ -56,19 +56,19 @@ class JuryEvaluation(BaseModel):
         return sum(raw_scores) / len(raw_scores)
 
 @EnvironmentFactory.register
-class EnvironmentMTSamples(Environment):
+class EnvironmentMTSamplesProcedures(Environment):
     
     jury = None # holder for llm-as-a-jury information
     jury_clients = None
     
     @staticmethod
-    def step(state: StateMTSamples, action: str) -> StateMTSamples:
+    def step(state: StateMTSamplesProcedures, action: str) -> StateMTSamplesProcedures:
         cleaned_action = clean_generation(action)
 
         random.seed(state.randomness if state.randomness is not None else 0)
         randomness = random.randint(0, MAX_SEED)
 
-        return StateMTSamples(
+        return StateMTSamplesProcedures(
             puzzle=state.puzzle,
             current_state=cleaned_action,
             steps=state.steps + [cleaned_action],
@@ -82,18 +82,18 @@ class EnvironmentMTSamples(Environment):
         )
 
     @staticmethod
-    def is_valid(state: StateMTSamples, action: str) -> bool:
+    def is_valid(state: StateMTSamplesProcedures, action: str) -> bool:
         return bool(clean_generation(action))
 
     @staticmethod
-    def is_final(state: StateMTSamples) -> bool:
+    def is_final(state: StateMTSamplesProcedures) -> bool:
         if not state.steps:
             return False
         score = evaluate_with_jury(state)
         return score >= FINAL_SCORE_THRESHOLD
 
     @staticmethod
-    def evaluate(state: StateMTSamples) -> Tuple[bool, float]:
+    def evaluate(state: StateMTSamplesProcedures) -> Tuple[bool, float]:
         if not state.steps:
             return False, 0.0
         score = evaluate_with_jury(state)
@@ -101,8 +101,8 @@ class EnvironmentMTSamples(Environment):
     
     @staticmethod
     def add_jury_evaluation(jury_models_info: List[dict]) -> None:
-        EnvironmentMTSamples.jury = jury_models_info
-        EnvironmentMTSamples.jury_clients = [
+        EnvironmentMTSamplesProcedures.jury = jury_models_info
+        EnvironmentMTSamplesProcedures.jury_clients = [
             OnlineLLM(
                 provider=jury_model_info.get("provider"),
                 api_key=jury_model_info.get("api_key"),
@@ -111,7 +111,7 @@ class EnvironmentMTSamples(Environment):
             for jury_model_info in jury_models_info
         ]
 
-def evaluate_with_jury(state: StateMTSamples) -> float:
+def evaluate_with_jury(state: StateMTSamplesProcedures) -> float:
     question = build_user_request(state)
     prompt = build_jury_prompt(question, state.current_state, state.answer)
     key = prompt_cache_key(prompt)
@@ -138,9 +138,9 @@ def build_jury_prompt(question: str, response: str, gold_response: str) -> str:
 
 
 def run_jury(prompt: str) -> List[JuryEvaluation]:
-    if EnvironmentMTSamples.jury is None or EnvironmentMTSamples.jury_clients is None:
+    if EnvironmentMTSamplesProcedures.jury is None or EnvironmentMTSamplesProcedures.jury_clients is None:
         raise ValueError("Jury models information must be set before running the jury evaluation.")
-    if not EnvironmentMTSamples.jury:
+    if not EnvironmentMTSamplesProcedures.jury:
         return []
 
     async def run_single_juror(juror_idx: int) -> JuryEvaluation | None:
@@ -151,20 +151,20 @@ def run_jury(prompt: str) -> List[JuryEvaluation]:
                 raise ValueError("Jury response did not contain a valid evaluation JSON object.")
             return parsed
         except Exception as exc:
-            print(f"MTSamples jury error for juror {juror_idx + 1}: {exc}")
+            print(f"MTSamplesProcedures jury error for juror {juror_idx + 1}: {exc}")
 
         return await run_jury_fallback(prompt, juror_idx)
 
     async def run_all_jurors() -> List[JuryEvaluation]:
         recovered = await asyncio.gather(
-            *(run_single_juror(juror_idx) for juror_idx in range(len(EnvironmentMTSamples.jury)))
+            *(run_single_juror(juror_idx) for juror_idx in range(len(EnvironmentMTSamplesProcedures.jury)))
         )
         return [evaluation for evaluation in recovered if evaluation is not None]
 
     return run_async_from_sync(run_all_jurors())
 
 
-def build_user_request(state: StateMTSamples) -> str:
+def build_user_request(state: StateMTSamplesProcedures) -> str:
     cleaned_text = f"Procedure note title: {state.title}\n\nNote:\n{state.note_text}"
     return TASK_PROMPT.format(cleaned_text=cleaned_text)
 
@@ -182,7 +182,7 @@ async def run_jury_fallback(prompt: str, juror_idx: int) -> JuryEvaluation | Non
         )
         return parse_jury_evaluation(content)
     except Exception as exc:
-        print(f"MTSamples fallback jury error for juror {juror_idx + 1}: {exc}")
+        print(f"MTSamplesProcedures fallback jury error for juror {juror_idx + 1}: {exc}")
         return None
 
 
@@ -192,8 +192,8 @@ async def request_jury_response(
     temperature: float,
     extra_instruction: str | None = None,
 ) -> str:
-    jury_model_info = EnvironmentMTSamples.jury[juror_idx % len(EnvironmentMTSamples.jury)]
-    client = EnvironmentMTSamples.jury_clients[juror_idx % len(EnvironmentMTSamples.jury_clients)]
+    jury_model_info = EnvironmentMTSamplesProcedures.jury[juror_idx % len(EnvironmentMTSamplesProcedures.jury)]
+    client = EnvironmentMTSamplesProcedures.jury_clients[juror_idx % len(EnvironmentMTSamplesProcedures.jury_clients)]
     messages: str | List[dict[str, str]]
     messages = [{"role": "user", "content": prompt}]
     if extra_instruction:
@@ -212,8 +212,8 @@ async def request_jury_response(
                 "logprobs": False,
             },
             n=1,
-            request_id=f"mtsamples-jury-{juror_idx}",
-            namespace="mtsamples_jury",
+            request_id=f"mtsamples-procedures-jury-{juror_idx}",
+            namespace="mtsamples_procedures_jury",
         )
     )
     if not response.data:

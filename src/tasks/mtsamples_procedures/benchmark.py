@@ -6,7 +6,7 @@ from helm.benchmark.scenarios.mtsamples_procedures_scenario import (
     MTSamplesProceduresScenario,
 )
 
-from .state import StateMTSamples
+from .state import StateMTSamplesProcedures
 from ... import BenchmarkFactory
 from ...typedefs import Benchmark
 
@@ -58,7 +58,7 @@ def load_instances(dataset_dir: Path) -> List[Dict[str, str]]:
         title = (
             _get_nested_attr(instance, "id", None)
             or _get_nested_attr(instance, "split", None)
-            or f"mtsamples_{idx}"
+            or f"mtsamples_procedures_{idx}"
         )
 
         note_marker = "\nNote:"
@@ -109,9 +109,9 @@ def split_instances(instances: List[Dict[str, str]], split: str) -> List[Dict[st
 
 
 @BenchmarkFactory.register
-class BenchmarkMTSamples(Benchmark):
+class BenchmarkMTSamplesProcedures(Benchmark):
     def __init__(self, path: str, split: str = "mini", max_len: int = None):
-        self.name = "mtsamples"
+        self.name = "mtsamples_procedures"
         dataset_dir = Path("datasets/medical/mtsamples_procedures")
         instances = load_instances(dataset_dir)
         self.data = split_instances(instances, split)
@@ -122,9 +122,9 @@ class BenchmarkMTSamples(Benchmark):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, idx: int) -> Tuple[int, StateMTSamples]:
+    def __getitem__(self, idx: int) -> Tuple[int, StateMTSamplesProcedures]:
         sample = self.data[idx]
-        state = StateMTSamples(
+        state = StateMTSamplesProcedures(
             puzzle=sample["puzzle"],
             current_state="",
             steps=[],
