@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 from ..typedefs import Method, Model, Agent, Environment, DecodingParameters, State, Benchmark, MAX_SEED
 from .. import MethodFactory, AgentDictFactory
 import numpy as np
-from ..logging_utils import log_event, log_section, log_section_end, score_summary, terminal_summary
+from ..logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, terminal_summary
 
 logger = logging.getLogger("__main__")
 
@@ -117,6 +117,10 @@ class MethodRAP(Method):
         ]
         actions = await asyncio.gather(*action_coroutines)
         logger.debug(f"Generated {len(actions)} action sets")
+        log_event("RAP_EXPAND", {
+            "request_id": request_id,
+            "actions": action_summary(actions),
+        })
 
         for action_list in actions:
             for action in action_list:
@@ -184,6 +188,7 @@ class MethodRAP(Method):
                         "expanded_children": len(node.parent.children) if node.parent else len(node.children),
                         "node_depth": len(node.actions),
                         "terminal": terminal_summary(self.env, [node.state]),
+                        "actions": action_summary(node.actions),
                         "value": node.reward,
                         "best_value": best_value,
                         "solved": True,
@@ -214,6 +219,8 @@ class MethodRAP(Method):
                 "value": value,
                 "best_value": best_value,
                 "best_action_count": len(best_actions),
+                "actions": action_summary(node.actions),
+                "best_actions": action_summary(best_actions),
                 "terminal": terminal_summary(self.env, [node.state]),
             })
 
@@ -242,6 +249,7 @@ class MethodRAP(Method):
             log_event("RAP_RESULT", {
                 "idx": idx,
                 "best_action_count": len(best_actions),
+                "best_actions": action_summary(best_actions),
                 "is_final": is_final,
                 "reward": reward,
                 "solved": True,
@@ -253,6 +261,7 @@ class MethodRAP(Method):
         log_event("RAP_RESULT", {
             "idx": idx,
             "best_action_count": len(best_actions),
+            "best_actions": action_summary(best_actions),
             "is_final": is_final,
             "reward": reward,
             "solved": False,

@@ -60,8 +60,8 @@ class MethodTOT_BFS(Method):
 
             # Execute actions
             state_proposals = []
-            for state, actions in zip(states, actions): # Bad practice
-                for action in actions:
+            for state, state_actions in zip(states, actions): # Bad practice
+                for action in state_actions:
                     state_proposals.append(self.env.step(state, action))
 
             if state_proposals == []:

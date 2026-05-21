@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
-from ..logging_utils import log_event, log_section, log_section_end
+from ..logging_utils import action_summary, log_event, log_section, log_section_end
 from ..utils import Resampler
 from .reagents import DifficultyAgentSpec, SearchRecord
 from .reagents_aos import StepAgentInfo
@@ -249,7 +249,7 @@ class MethodReagentsALNS(Method):
                 )
             )
 
-        return new_records, agent_indices, fleet_counts
+        return new_records, agent_indices, fleet_counts, action_batches
 
     async def _evaluate_states(
         self,
@@ -430,7 +430,7 @@ class MethodReagentsALNS(Method):
         for step in range(self.num_steps):
             best_value_before_step = max(record.value for record in records)
 
-            new_records, agent_indices, fleet_counts = await self._mutate_states(
+            new_records, agent_indices, fleet_counts, action_batches = await self._mutate_states(
                 records,
                 namespace,
                 idx,
@@ -442,6 +442,7 @@ class MethodReagentsALNS(Method):
                 "fleet_counts": fleet_counts,
                 "weights": self.allocator.weights.tolist(),
                 "probs": self.allocator.get_probs().tolist(),
+                "actions": action_summary(action_batches),
                 "agent_counts": {
                     spec.get("agent_type", f"agent_{agent_index}"): fleet_counts[agent_index]
                     for agent_index, spec in enumerate(self.step_agents)

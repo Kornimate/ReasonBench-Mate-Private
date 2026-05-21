@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
-from ..logging_utils import log_event, log_section, log_section_end
+from ..logging_utils import action_summary, log_event, log_section, log_section_end
 from ..utils import Resampler
 from .reagents import DifficultyAgentSpec, SearchRecord
 from .reagents_aos import StepAgentInfo
@@ -339,7 +339,7 @@ class MethodReagentsFAS(Method):
                 )
             )
 
-        return new_records, fleet_counts, selector_features
+        return new_records, fleet_counts, selector_features, action_batches
 
     async def _evaluate_states(
         self,
@@ -495,7 +495,7 @@ class MethodReagentsFAS(Method):
         for step in range(self.num_steps):
             difficulty = getattr(self, "current_difficulty", 0.5)
 
-            new_records, fleet_counts, selector_features = await self._mutate_states(
+            new_records, fleet_counts, selector_features, action_batches = await self._mutate_states(
                 records=records,
                 namespace=namespace,
                 idx=idx,
@@ -508,6 +508,7 @@ class MethodReagentsFAS(Method):
                 "width": len(records),
                 "fleet_counts": fleet_counts,
                 "selector_features": selector_features,
+                "actions": action_summary(action_batches),
             })
 
             new_records, terminal_indices, solved_indices = await self._evaluate_states(

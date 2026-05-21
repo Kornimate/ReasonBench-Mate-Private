@@ -84,13 +84,13 @@ class MethodGOT(Method):
                 for i, (state, action) in enumerate(zip(states, generated_actions))
             ]
 
-            actions = await asyncio.gather(*aggregate_coroutines)
-            logger.debug(f"{len(actions)} Actions selected for task {idx}: \n{actions}")
+            selected_actions = await asyncio.gather(*aggregate_coroutines)
+            logger.debug(f"{len(selected_actions)} Actions selected for task {idx}: \n{selected_actions}")
 
             # Execute actions on environment
             proposed_states = []
-            for state, actions in zip(states, actions):
-                for action in actions:
+            for state, state_actions in zip(states, selected_actions):
+                for action in state_actions:
                     proposed_states.append(self.env.step(state, action))
             
             if proposed_states == []:
@@ -99,7 +99,7 @@ class MethodGOT(Method):
                     "step": step,
                     "frontier_size": len(states),
                     "generated": action_summary(generated_actions),
-                    "aggregated": action_summary(actions),
+                    "aggregated": action_summary(selected_actions),
                     "proposal_count": 0,
                     "empty_proposals": True,
                 })
@@ -136,7 +136,7 @@ class MethodGOT(Method):
                 "step": step,
                 "frontier_size": len(states),
                 "generated": action_summary(generated_actions),
-                "aggregated": action_summary(actions),
+                "aggregated": action_summary(selected_actions),
                 "proposal_count": len(proposed_states),
                 "selected_count": len(states),
                 "values": score_summary(values),

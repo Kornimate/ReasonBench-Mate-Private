@@ -66,6 +66,7 @@ def action_summary(actions: Iterable[Any]) -> dict[str, Any]:
         "count": len(flattened),
         "unique": len(counts),
         "most_common": counts.most_common(5),
+        "values": flattened,
     }
 
 

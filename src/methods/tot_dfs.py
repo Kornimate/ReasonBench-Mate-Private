@@ -75,8 +75,8 @@ class MethodTOT_DFS(Method):
                 actions = await asyncio.gather(*action_coroutines)
 
                 state_proposals = []
-                for state2, actions in zip(s, actions):
-                    for action in actions:
+                for state2, state_actions in zip(s, actions):
+                    for action in state_actions:
                         next_state = self.env.step(state2, action)
                         state_proposals.append(next_state)
                 
@@ -157,8 +157,8 @@ class MethodTOT_DFS(Method):
             actions = await asyncio.gather(*action_coroutines)
 
             state_proposals = []
-            for state2, actions in zip(s, actions):
-                for action in actions:
+            for state2, state_actions in zip(s, actions):
+                for action in state_actions:
                     next_state = self.env.step(state2, action)
                     state_proposals.append(next_state)
             

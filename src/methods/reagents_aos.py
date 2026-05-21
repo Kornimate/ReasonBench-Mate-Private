@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
-from ..logging_utils import log_event, log_section, log_section_end
+from ..logging_utils import action_summary, log_event, log_section, log_section_end
 from ..utils import Resampler
 from .reagents import DifficultyAgentSpec, SearchRecord
 
@@ -249,7 +249,7 @@ class MethodReagentsAOS(Method):
                 )
             )
 
-        return new_records, agent_indices, counts
+        return new_records, agent_indices, counts, action_batches
 
     async def _evaluate_states(
         self,
@@ -345,6 +345,7 @@ class MethodReagentsAOS(Method):
         agent_indices: list[int],
         rewards: list[float],
         solved_indices: list[int],
+        action_batches: list,
     ) -> None:
         agent_types = [
             spec.get("agent_type", f"agent_{agent_index}")
@@ -374,6 +375,7 @@ class MethodReagentsAOS(Method):
             "avg_reward_by_agent": avg_reward_by_agent,
             "avg_reward_act": avg_reward_by_agent.get("act"),
             "avg_reward_react": avg_reward_by_agent.get("react"),
+            "actions": action_summary(action_batches),
             "solved": bool(solved_indices),
         }
         log_event("AOS_STEP", log_entry)
@@ -471,7 +473,7 @@ class MethodReagentsAOS(Method):
         log_section("Runtime Agent Distribution Information:")
 
         for step in range(self.num_steps):
-            new_records, agent_indices, fleet_counts = await self._mutate_states(
+            new_records, agent_indices, fleet_counts, action_batches = await self._mutate_states(
                 records, namespace, idx, step
             )
 
@@ -497,6 +499,7 @@ class MethodReagentsAOS(Method):
                 agent_indices=agent_indices,
                 rewards=rewards,
                 solved_indices=solved_indices,
+                action_batches=action_batches,
             )
 
             width = self._update_width(records, new_records, width)

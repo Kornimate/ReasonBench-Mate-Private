@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, MAX_SEED, Method, Model, State
 from ..utils import Resampler
-from ..logging_utils import log_event, log_section, log_section_end, score_summary, terminal_summary
+from ..logging_utils import action_summary, log_event, log_section, log_section_end, score_summary, terminal_summary
 
 
 class StepAgentSpec(TypedDict):
@@ -155,7 +155,7 @@ class MethodReagents(Method):
                 new_state = record.state
             new_records.append(SearchRecord(state=new_state, value=record.value, depth=record.depth + 1))
 
-        return new_records, agent_indices
+        return new_records, agent_indices, action_batches
 
     async def _evaluate_states(
         self,
@@ -326,7 +326,7 @@ class MethodReagents(Method):
 
         log_section("ReAgents Method Information:")
         for step in range(self.num_steps):
-            new_records, agent_indices = await self._mutate_states(records, namespace, idx, step)
+            new_records, agent_indices, action_batches = await self._mutate_states(records, namespace, idx, step)
             new_records, terminal_indices, solved_indices = await self._evaluate_states(
                 new_records, value_cache, namespace, idx, step
             )
@@ -355,6 +355,7 @@ class MethodReagents(Method):
                 },
                 "old_values": score_summary(old_values),
                 "new_values": score_summary(new_values),
+                "actions": action_summary(action_batches),
                 "terminal_indices": terminal_indices,
                 "solved_indices": solved_indices,
                 "priors": self.priors.tolist(),
