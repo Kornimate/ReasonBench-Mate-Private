@@ -1,4 +1,3 @@
-$benchmark = "hotpotqa"
 $methods = @(
     "io"
     "cot"
@@ -9,13 +8,14 @@ $methods = @(
     "foa"
     "heterogeneous_foa"
     "reagents"
-)
-
-$split = "test"
-$repeats = 10
+    )
+    
+$benchmark = "hotpotqa"
+$split = "single"
+$repeats = 1
 
 $provider = "openai"
-$apiKey = "OPENAI_API_KEY_PERS"
+$apiKey = "OPENAI_API_KEY_CLAN"
 $model = "gpt-4.1-mini"
 
 $configPath = Join-Path "scripts/configs" "$benchmark.env"

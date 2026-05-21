@@ -10,9 +10,9 @@ $benchmarks = @(
     # "mimic_rrs"
 )
 
-$method = "io"
-$split = "test"
-$repeats = 10
+$method = "heterogeneous_foa"
+$split = "single"
+$repeats = 1
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY_CLAN"

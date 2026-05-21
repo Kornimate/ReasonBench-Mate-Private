@@ -1,6 +1,6 @@
-$benchmark = "hotpotqa"
+$benchmark = "game24"
 $method = "heterogeneous_foa"
-$split = "mini"
+$split = "single"
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY"
