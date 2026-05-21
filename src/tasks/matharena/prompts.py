@@ -77,3 +77,31 @@ Input Problem: {input}
 Proposed solution: {answer}
 Judge:
 '''
+
+# Method compatibility prompts for roles that were not present in the original task.
+io = cot
+react = act
+
+aggregate = '''Select the best {k} actions to continue solving the math problem. Return only the numbers of the selected actions.
+
+Input Problem: {input}
+Candidate actions:
+{actions}
+'''
+
+self_evaluate_step = '''Given a math problem and a proposed reasoning step, determine if the step is useful (yes/no).
+
+Input Problem: {input}
+Previous steps:
+{previous_steps}
+Proposed step:
+{step}
+Judge:
+'''
+
+self_evaluate_answer = '''Given a math problem and a proposed solution, determine if the solution is correct (yes/no).
+
+Input Problem: {input}
+Proposed solution: {answer}
+Judge:
+'''

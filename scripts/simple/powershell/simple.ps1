@@ -1,5 +1,5 @@
-$benchmark = "mtsamples_procedures"
-$method = "reagents"
+$benchmark = "matharena"
+$method = "io"
 $split = "single"
 
 $provider = "openai"

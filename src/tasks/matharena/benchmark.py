@@ -1,4 +1,3 @@
-import random
 from typing import Tuple
 
 import pandas as pd
@@ -8,30 +7,20 @@ from ... import BenchmarkFactory
 from ...typedefs import Benchmark
 from ...utils import deterministic_shuffle, parse_n_split
 
-import sys
+from .parser import parse_grading
 
-from .matharena_ethz.src.matharena.parser import parse_grading
+
 def get_split_sizes(total_size, proportions=(0.1, 0.4, 0.25, 0.25)):
-        """Calculate split sizes based on total dataset size"""
-        sizes = [max(1, int(total_size * p)) for p in proportions]
-        return sizes
+    sizes = [max(1, int(total_size * p)) for p in proportions]
+    return sizes
+
 
 @BenchmarkFactory.register
 class BenchmarkMathArena(Benchmark):
-    
-
     def __init__(self, path: str, split: str = "mini", max_len: int = None):
-        """
-        Initializes the benchmark with the dataset.
-
-        Args:
-            data_path (str): Path to the dataset.
-            split (str): Name of the dataset split (e.g., "mini", "train", "validation", "test").
-        """
-
         self.name = "matharena"
         
-        df = pd.read_json(path, lines=True,
+        df = pd.read_json(path.replace("csv", "jsonl"), lines=True,
                           compression='gzip')
         df.reset_index(inplace=True)
         
@@ -39,34 +28,23 @@ class BenchmarkMathArena(Benchmark):
         df['parsed_problem'] = df['problem'].apply(parse_grading)
 
         # Prepare the dataset
-        data = list(zip(df['problem_idx'], df['parsed_problem'], df['answer']))
+        data = list(zip(df['problem_idx'], df['problem'], df['parsed_problem'], df['answer']))
 
         # Compute the idxs for each subset
-        valid_idxs = set(range(len(data)))
+        shuffled_idxs = deterministic_shuffle(list(range(len(data))))
+        mini, train, val, test = get_split_sizes(len(data))
 
-        total_samples = len(data)
-        mini, train, val, test = get_split_sizes(total_samples)
-
-        random.seed(0)
-        
-        mini_set_idxs = random.sample(list(valid_idxs), mini)
-        valid_idxs = valid_idxs - set(mini_set_idxs)
-
-        train_set_idxs = random.sample(list(valid_idxs), min(train, len(valid_idxs)))
-        valid_idxs = valid_idxs - set(train_set_idxs)
-
-        validation_set_idxs = random.sample(list(valid_idxs), min(val, len(valid_idxs)))
-        valid_idxs = valid_idxs - set(validation_set_idxs)
-
-        test_set_idxs = random.sample(list(valid_idxs), min(test, len(valid_idxs)))
-        # valid_idxs = valid_idxs - set(validation_set_idxs)
+        mini_set_idxs = shuffled_idxs[:mini]
+        train_set_idxs = shuffled_idxs[mini:mini + train]
+        validation_set_idxs = shuffled_idxs[mini + train:mini + train + val]
+        test_set_idxs = shuffled_idxs[mini + train + val:mini + train + val + test]
 
         if split == "full":
             self.data = data
         elif split == "single":
             self.data = data[:1]
         elif split == "mini":
-            self.data = [data[i] for i in mini_set_idxs]
+            self.data = [data[i] for i in mini_set_idxs] or data[:1]
         elif split.startswith("n["):
             self.data = deterministic_shuffle(data)[:parse_n_split(split)]
         elif split == "train":
@@ -76,38 +54,29 @@ class BenchmarkMathArena(Benchmark):
         elif split == "test":
             self.data = [data[i] for i in test_set_idxs]
         else:
-            raise ValueError("Invalid set name")
+            raise ValueError(f"Invalid set name: {split}")
 
         if max_len:
             self.data = self.data[:max_len]
 
     def __len__(self) -> int:
-        """
-        Returns the length of the benchmark dataset.
-        """
         return len(self.data)
 
     def __getitem__(self, idx) -> Tuple[int, StateMathArena]:
-        """
-        Returns the index and the state for the given index.
-
-        Args:
-            idx (int): Index of the data point.
-
-        Returns:
-            Tuple[int, StateMathArena]: Index and the corresponding state.
-        """
         index = self.data[idx][0]
-        parsed_problem = self.data[idx][1]
-        answer = self.data[idx][2]
+        problem = self.data[idx][1]
+        parsed_problem = self.data[idx][2]
+        answer = self.data[idx][3]
 
         # Create a state object
         state = StateMathArena(
             problem_idx=index,
-            problem=parsed_problem,
-            current_state="",
+            problem=problem,
+            current_state=problem,
             steps=[],
-            answer=answer
+            answer=str(answer),
+            parsed_problem=parsed_problem,
+            randomness=0,
         )
         return index, state
 

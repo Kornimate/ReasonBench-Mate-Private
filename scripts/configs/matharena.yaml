@@ -29,7 +29,7 @@ heterogeneous_foa:
   step_agents:
     - agent_type: "act"
       num_agents: 2
-    - agent_type: "cot"
+    - agent_type: "react"
       num_agents: 1
 
 reagents:
@@ -47,7 +47,7 @@ reagents:
   step_agents:
     - agent_type: "act"
       num_agents: 2
-    - agent_type: "cot"
+    - agent_type: "react"
       num_agents: 2
 
 tot_bfs:
@@ -78,4 +78,71 @@ rap:
   num_evaluations: 3
   exploration_constant: 1.0
   max_depth: 10
+
+reagents_aos:
+  width: 4
+  num_steps: 6
+  max_value: 1.0
+  backtrack: 0.9
+  resampling: linear
+  origin: 0.5
+  min_steps: 1
+  num_evaluations: 1
+
+  runtime_width_adaptation: true
+  difficulty_based_width_init: true
+
+  aos_alpha: 0.2
+  aos_temperature: 0.25
+  aos_epsilon: 0.10
+  aos_min_count_per_type: 1
+
+reagents_alns:
+  width: 4
+  num_steps: 6
+  max_value: 1.0
+  backtrack: 0.9
+  resampling: linear
+  origin: 0.5
+  min_steps: 1
+  num_evaluations: 1
+
+  runtime_width_adaptation: true
+  difficulty_based_width_init: true
+
+  alns_reaction_factor: 0.2
+  alns_min_weight: 0.05
+  alns_min_count_per_type: 1
+
+  alns_score_solved: 10.0
+  alns_score_new_best: 5.0
+  alns_score_improved: 2.0
+  alns_score_neutral: 0.5
+  alns_score_worse: 0.0
+
+reagents_fas:
+  width: 4
+  num_steps: 6
+  max_value: 1.0
+  backtrack: 0.9
+  resampling: linear
+  origin: 0.5
+  min_steps: 1
+  num_evaluations: 1
+  difficulty_agent_type: "population"
+
+  runtime_width_adaptation: true
+  difficulty_based_width_init: true
+
+  min_react_prob: 0.15
+  max_react_prob: 0.85
+  min_count_per_type: 1
+
+  beta_0: -0.4
+  beta_difficulty: 1.2
+  beta_uncertainty: 1.0
+  beta_stagnation: 0.8
+  beta_duplicate: 0.8
+  beta_progress: -0.8
+  beta_time_pressure: -0.7
 
