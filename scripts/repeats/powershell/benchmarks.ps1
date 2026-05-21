@@ -13,7 +13,7 @@ $benchmarks = @(
 )
 
 $method = "heterogeneous_foa"
-$split = "single"
+$split = "n[50]"
 $repeats = 1
 
 $provider = "openai"

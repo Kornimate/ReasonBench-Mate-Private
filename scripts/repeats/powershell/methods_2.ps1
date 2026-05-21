@@ -11,7 +11,7 @@ $methods = @(
     )
     
 $benchmark = "pubmed_qa"
-$split = "single"
+$split = "n[50]"
 $repeats = 1
 
 $provider = "openai"
