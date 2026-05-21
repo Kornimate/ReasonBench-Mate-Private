@@ -10,7 +10,7 @@ $methods = @(
     # "reagents"
     )
     
-$benchmark = "mtsamples_procedures"
+$benchmark = "mimic_rrs"
 $split = "single"
 $repeats = 1
 

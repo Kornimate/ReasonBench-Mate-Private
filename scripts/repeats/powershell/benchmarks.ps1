@@ -12,7 +12,7 @@ $benchmarks = @(
     "sonnetwriting"
 )
 
-$method = "io"
+$method = "heterogeneous_foa"
 $split = "single"
 $repeats = 1
 

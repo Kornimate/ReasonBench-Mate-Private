@@ -10,7 +10,7 @@ $methods = @(
     # "reagents"
     )
     
-$benchmark = "mtsamples_procedures"
+$benchmark = "pubmed_qa"
 $split = "single"
 $repeats = 1
 

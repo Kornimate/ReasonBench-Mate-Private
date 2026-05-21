@@ -1,35 +1,37 @@
-$methods = @(
-    "io"
-    "cot"
-    "cot_sc"
-    "react"
-    "tot_bfs"
-    "rap"
-    "foa"
-    # "heterogeneous_foa"
-    # "reagents"
-    )
-    
-$benchmark = "mtsamples_procedures"
+$benchmarks = @(
+    "game24"
+    "hle"
+    "hotpotqa"
+    "humaneval"
+    "logiqa"
+    "matharena"
+    "mimic_rrs"
+    "mtsamples_procedures"
+    "pubmed_qa"
+    "scibench"
+    "sonnetwriting"
+)
+
+$method = "reagents"
 $split = "single"
 $repeats = 1
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY_CLAN"
-$model = "gpt-4.1-mini"
+$model = "gpt-4.1-nano"
 
-$configPath = Join-Path "scripts/configs" "$benchmark.env"
-Get-Content -Path $configPath | ForEach-Object {
-    if ($_ -match '^\s*#' -or $_ -match '^\s*$') {
-        return
-    }
-
-    $key, $value = $_ -split '=', 2
-    Set-Variable -Name $key -Value $value
-}
-
-foreach ($method in $methods) {
+foreach ($benchmark in $benchmarks) {
     Write-Host "Running benchmark=$benchmark with method=$method"
+
+    $configPath = Join-Path "scripts/configs" "$benchmark.env"
+    Get-Content -Path $configPath | ForEach-Object {
+        if ($_ -match '^\s*#' -or $_ -match '^\s*$') {
+            return
+        }
+
+        $key, $value = $_ -split '=', 2
+        Set-Variable -Name $key -Value $value
+    }
 
     $maxCompletionTokensDefault = $MAX_COMPLETION_TOKENS
 
@@ -66,6 +68,6 @@ foreach ($method in $methods) {
 
     python @pythonArgs
 
-    Write-Host "Finished method=$method"
+    Write-Host "Finished benchmark=$benchmark"
     Write-Host "-----------------------------------"
 }
