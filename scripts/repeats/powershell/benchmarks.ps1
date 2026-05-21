@@ -3,14 +3,16 @@ $benchmarks = @(
     "hle"
     "hotpotqa"
     "humaneval"
-    "scibench"
-    "sonnetwriting"
+    "logiqa"
+    "matharena"
+    # "mimic_rrs"
     "mtsamples_procedures"
     "pubmed_qa"
-    # "mimic_rrs"
+    "scibench"
+    "sonnetwriting"
 )
 
-$method = "heterogeneous_foa"
+$method = "io"
 $split = "single"
 $repeats = 1
 

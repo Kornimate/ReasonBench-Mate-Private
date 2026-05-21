@@ -1,5 +1,5 @@
-$benchmark = "game24"
-$method = "heterogeneous_foa"
+$benchmark = "mtsamples_procedures"
+$method = "reagents"
 $split = "single"
 
 $provider = "openai"

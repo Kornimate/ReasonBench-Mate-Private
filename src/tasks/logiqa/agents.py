@@ -6,6 +6,65 @@ from . import prompts as prompts
 from .state import StateLogiQA
 from ... import AgentFactory
 from ...typedefs import Agent, Model, DecodingParameters
+from ...utils import build_population_prediction_prompt, parse_population_prediction
+
+
+def parse_answer(response: str) -> str:
+    return response.lower().replace("answer: ", "").strip()
+
+
+def parse_candidate_answers(response: str) -> List[str]:
+    matches = re.findall(r"Candidate\s*\d+\s*:\s*(.+?)(?=Candidate\s*\d+\s*:|$)", response, flags=re.IGNORECASE | re.DOTALL)
+    if matches:
+        return [get_answer(match) for match in matches if get_answer(match) in "abcd"]
+
+    return [get_answer(line) for line in response.splitlines() if get_answer(line) in "abcd"]
+
+
+@AgentFactory.register
+class AgentIoLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        choices = "\n".join(get_choices(state))
+        prompt = prompts.io.format(paragraph=state.context, question=state.question, choices=choices)
+        responses = await model.request(
+            prompt=prompt,
+            n=n,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return [parse_answer(response) for response in responses]
+
+
+@AgentFactory.register
+class AgentCotLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        choices = "\n".join(get_choices(state))
+        prompt = prompts.cot.format(paragraph=state.context, question=state.question, choices=choices)
+        responses = await model.request(
+            prompt=prompt,
+            n=n,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return [parse_answer(response.splitlines()[-1]) for response in responses]
 
 @AgentFactory.register
 class AgentActLogiQA(Agent):
@@ -37,8 +96,57 @@ class AgentActLogiQA(Agent):
         )
 
         # Parse the response
-        proposals = [r.lower().replace("answer: ", "").strip() for r in responses]
+        proposals = [parse_answer(r) for r in responses]
         return proposals
+
+
+@AgentFactory.register
+class AgentPopulationLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        max_agents: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> int:
+        prompt = build_population_prediction_prompt(state, max_agents)
+        response = await model.request(
+            prompt=prompt,
+            n=1,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return parse_population_prediction(response[0], max_agents, max_agents)
+
+
+@AgentFactory.register
+class AgentBfsLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        choices = "\n".join(get_choices(state))
+        prompt = prompts.bfs.format(
+            paragraph=state.context,
+            question=state.question,
+            choices=choices,
+            current_answer=state.current_state,
+        )
+        responses = await model.request(
+            prompt=prompt,
+            n=1,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return parse_candidate_answers(responses[0])
     
 
 @AgentFactory.register
@@ -58,8 +166,8 @@ class AgentAggregateLogiQA(Agent):
         """
         # Format the prompt
         choices = '\n'.join(get_choices(state))
-        actions = '\n'.join([f"({i+1}) Answer: {a}" for i, a in enumerate(actions)])
-        prompt = prompts.aggregate.format(paragraph=state.context, question=state.question, choices=choices, k=k, actions=actions)
+        action_block = '\n'.join([f"({i+1}) Answer: {a}" for i, a in enumerate(actions)])
+        prompt = prompts.aggregate.format(paragraph=state.context, question=state.question, choices=choices, k=k, actions=action_block)
 
         # Format the request
         responses = await model.request(

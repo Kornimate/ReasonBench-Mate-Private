@@ -1,3 +1,38 @@
+io = '''You are participating in a multiple-choice logic quiz. You will be given a paragraph, a question, and four choices.
+Select the one choice that follows best from the paragraph.
+Return only the letter: a, b, c, or d.
+
+{paragraph}
+
+{question}
+{choices}'''
+
+cot = '''You are participating in a multiple-choice logic quiz. You will be given a paragraph, a question, and four choices.
+Think briefly about the logical relationship between the paragraph and the choices, then end with exactly "Answer: X" where X is a, b, c, or d.
+
+{paragraph}
+
+{question}
+{choices}'''
+
+bfs = '''You are participating in a multiple-choice logic quiz. You will be given a paragraph, a question, and four choices.
+Generate multiple candidate answer choices. Each candidate must be only a, b, c, or d.
+
+Format exactly:
+Candidate 1: <a/b/c/d>
+Candidate 2: <a/b/c/d>
+Candidate 3: <a/b/c/d>
+
+Current answer:
+{current_answer}
+
+{paragraph}
+
+{question}
+{choices}
+
+Candidates:'''
+
 act = '''You are participating in a multiple-choice quiz. You will be given a paragraph, which  contains the information needed to answer the question.
 After the paragraph you will be given your question together with the four choices.
 
