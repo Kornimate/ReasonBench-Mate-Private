@@ -5,7 +5,7 @@ $benchmarks = @(
     "humaneval"
     "logiqa"
     "matharena"
-    # "mimic_rrs"
+    "mimic_rrs"
     "mtsamples_procedures"
     "pubmed_qa"
     "scibench"

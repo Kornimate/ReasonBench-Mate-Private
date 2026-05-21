@@ -54,8 +54,7 @@ async def run(args, cache_path):
     # API
     api = API(
         pipeline=pipeline,
-        model=args.model,
-        log_path=f"logs/raw_calls/repeats/{args.model}/{args.benchmark}/{args.method}_{args.split}.log"
+        model=args.model
     )
 
     # Decoding Parameters
