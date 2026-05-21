@@ -54,14 +54,14 @@ class API(ABC):
         # Ensure new directory exists
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
-        # Create and add new handler
-        f_handler = logging.FileHandler(self.log_path, mode="w", encoding="utf-8")
-        f_handler.setLevel(logging.INFO)
-        logger.addHandler(f_handler)
-        logger.addHandler(f_handler)
-
         # Update log path
         self.log_path = log_path
+
+        # Create and add new handler
+        f_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+        f_handler.setLevel(logging.INFO)
+        logger.addHandler(f_handler)
+        logger.setLevel(logging.INFO)
     
     def update_log_path(self, log_path: str):
         """

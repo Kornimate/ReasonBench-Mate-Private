@@ -55,7 +55,7 @@ async def run(args, cache_path):
     api = API(
         pipeline=pipeline,
         model=args.model,
-        log_path=f"logs/raw_calls/simple/{args.model}/{args.benchmark}/{args.method}_{args.split}.log"
+        log_path=f"logs/raw_calls/repeats/{args.model}/{args.benchmark}/{args.method}_{args.split}.log"
     )
 
     # Decoding Parameters
@@ -96,9 +96,9 @@ async def run(args, cache_path):
         # Clean the API costs and update the log_path (not the cache though)
         api.clean()
         if args.reasoning_effort:
-            calls_path = f"logs/raw_calls/simple/{args.model}_{args.reasoning_effort}/{args.benchmark}/{args.method}_{args.split}_{i}.log"
+            calls_path = f"logs/raw_calls/repeats/{args.model}_{args.reasoning_effort}/{args.benchmark}/{args.method}_{args.split}_{i}.log"
         else:
-            calls_path = f"logs/raw_calls/simple/{args.model}/{args.benchmark}/{args.method}_{args.split}_{i}.log"
+            calls_path = f"logs/raw_calls/repeats/{args.model}/{args.benchmark}/{args.method}_{args.split}_{i}.log"
         api.update_log_path(
             log_path=calls_path
         )
