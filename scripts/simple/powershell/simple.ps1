@@ -1,4 +1,4 @@
-$benchmark = "matharena"
+$benchmark = "humaneval"
 $method = "io"
 $split = "single"
 

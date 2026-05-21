@@ -8,6 +8,8 @@ import contextlib
 import io
 import tempfile
 import os
+import shutil
+import sys
 import faulthandler
 import platform
 import multiprocessing
@@ -86,25 +88,62 @@ def parse_action(string) -> str | None:
     match = re.match(pattern, string)
     return "\n".join(match.group(0).split('\n')[1:-1]) if match else string
 
-def evaluate_code_python(code: str, entry_point: str, test: str) -> Tuple[bool, float]: # NOTE: Only works on a UNIX system as we are using signal. Need to change this to use a different method for Windows or general case if needed.
+def evaluate_code_python(code: str, entry_point: str, test: str) -> Tuple[bool, float]:
     """
     Evaluates the given code using the provided entry point and test.
     """
-    manager = multiprocessing.Manager()
-    result = manager.list()
-    ts = separate_tests(test)
-    for t in ts:
-        p = multiprocessing.Process(target=unsafe_execute, args=(code, entry_point, t, TIMEOUT, result))
-        p.start()
-        p.join(timeout=TIMEOUT+1)
-        if p.is_alive():
-            p.kill()
+    if platform.system() == "Windows":
+        return evaluate_code_python_windows(code, entry_point, test)
 
-    if not result:
-        return False, 0.0
-    
-    else:
+    with multiprocessing.Manager() as manager:
+        result = manager.list()
+        ts = separate_tests(test)
+        for t in ts:
+            p = multiprocessing.Process(target=unsafe_execute, args=(code, entry_point, t, result))
+            p.start()
+            p.join(timeout=TIMEOUT + 1)
+            if p.is_alive():
+                p.terminate()
+                p.join(timeout=1)
+                if p.is_alive():
+                    p.kill()
+                    p.join()
+
+        if not result:
+            return False, 0.0
+
         return True, sum(result) / len(result)
+
+
+def evaluate_code_python_windows(code: str, entry_point: str, test: str) -> Tuple[bool, float]:
+    results = []
+    for t in separate_tests(test):
+        program = build_python_program(code, entry_point, t)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = os.path.join(tmp_dir, "candidate_test.py")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(program)
+
+            try:
+                completed = subprocess.run(
+                    [sys.executable, path],
+                    cwd=tmp_dir,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=TIMEOUT,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                results.append(0)
+                continue
+
+            results.append(1 if completed.returncode == 0 else 0)
+
+    if not results:
+        return False, 0.0
+
+    return True, sum(results) / len(results)
     
 def evaluate_code_rust(code: str, entry_point: str, test: str) -> Tuple[bool, float]:
     """
@@ -113,9 +152,7 @@ def evaluate_code_rust(code: str, entry_point: str, test: str) -> Tuple[bool, fl
     # This implementation is from Reflexion, it uses rust compiler to compile the code and then run it.
 
     def cleanup():
-        # Clean up the temporary directory
-        if os.path.exists(tmp_dir):
-            os.system(f"rm -rf {tmp_dir}")
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
     tmp_dir, tmp_path = create_temp_project()
@@ -155,7 +192,7 @@ def separate_tests(test):
 
 #---Context Managers---#
 # From HumanEval repo for evaluating code with timelimit and a bit more securely. Still recommending to do it inside a sandbox.
-def unsafe_execute(code: str, entry_point: str, test: str, timeout: float, result):
+def unsafe_execute(code: str, entry_point: str, test: str, result):
     with create_tempdir():
         import os
         import shutil
@@ -165,20 +202,12 @@ def unsafe_execute(code: str, entry_point: str, test: str, timeout: float, resul
 
         reliability_guard()
 
-        program = (
-            "from typing import *\n"
-            + code 
-            + '\n'
-            + test
-            + '\n'
-            + f'check({entry_point})'
-        )
+        program = build_python_program(code, entry_point, test)
 
         try:
             exec_globals = {}
             with swallow_io():
-                with time_limit(timeout):
-                    exec(program, exec_globals)
+                exec(program, exec_globals)
             result.append(1)
         except Exception:
             result.append(0)
@@ -191,6 +220,10 @@ def unsafe_execute(code: str, entry_point: str, test: str, timeout: float, resul
 
 @contextlib.contextmanager
 def time_limit(seconds: float):
+    if not hasattr(signal, "setitimer") or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
     def signal_handler(signum, frame):
         raise TimeoutError("Timed out!")
 
@@ -248,6 +281,17 @@ def chdir(root):
     finally:
         os.chdir(cwd)
 
+
+def build_python_program(code: str, entry_point: str, test: str) -> str:
+    return (
+        "from typing import *\n"
+        + code
+        + "\n"
+        + test
+        + "\n"
+        + f"check({entry_point})"
+    )
+
 def reliability_guard(maximum_memory_bytes: Optional[int] = None):
     """
     This disables various destructive functions and prevents the generated code
@@ -261,7 +305,7 @@ def reliability_guard(maximum_memory_bytes: Optional[int] = None):
     with caution.
     """
 
-    if maximum_memory_bytes is not None:
+    if maximum_memory_bytes is not None and platform.system() != "Windows":
         import resource
 
         resource.setrlimit(resource.RLIMIT_AS, (maximum_memory_bytes, maximum_memory_bytes))
@@ -280,33 +324,36 @@ def reliability_guard(maximum_memory_bytes: Optional[int] = None):
 
     os.environ["OMP_NUM_THREADS"] = "1"
 
-    os.kill = None
-    os.system = None
-    os.putenv = None
-    os.remove = None
-    os.removedirs = None
-    os.rmdir = None
-    os.fchdir = None
-    os.setuid = None
-    os.fork = None
-    os.forkpty = None
-    os.killpg = None
-    os.rename = None
-    os.renames = None
-    os.truncate = None
-    os.replace = None
-    os.unlink = None
-    os.fchmod = None
-    os.fchown = None
-    os.chmod = None
-    os.chown = None
-    os.chroot = None
-    os.fchdir = None
-    os.lchflags = None
-    os.lchmod = None
-    os.lchown = None
-    os.getcwd = None
-    os.chdir = None
+    for name in [
+        "kill",
+        "system",
+        "putenv",
+        "remove",
+        "removedirs",
+        "rmdir",
+        "fchdir",
+        "setuid",
+        "fork",
+        "forkpty",
+        "killpg",
+        "rename",
+        "renames",
+        "truncate",
+        "replace",
+        "unlink",
+        "fchmod",
+        "fchown",
+        "chmod",
+        "chown",
+        "chroot",
+        "lchflags",
+        "lchmod",
+        "lchown",
+        "getcwd",
+        "chdir",
+    ]:
+        if hasattr(os, name):
+            setattr(os, name, None)
 
     import shutil
 
@@ -318,7 +365,7 @@ def reliability_guard(maximum_memory_bytes: Optional[int] = None):
 
     subprocess.Popen = None  # type: ignore
 
-    __builtins__["help"] = None
+    builtins.help = None
 
     import sys
 
@@ -336,10 +383,10 @@ def create_temp_project() -> Tuple[str, str]:
     # get random number
     rand = os.urandom(8).hex()
     # create a temp directory
-    temp_dir = f"/tmp/cargo_harness-{pid}-{rand}"
+    temp_dir = os.path.join(tempfile.gettempdir(), f"cargo_harness-{pid}-{rand}")
     # delete the temp directory if it exists
     if os.path.exists(temp_dir):
-        os.system(f"rm -rf {temp_dir}")
+        shutil.rmtree(temp_dir, ignore_errors=True)
     os.mkdir(temp_dir)
     # move the cargo harness into the temp directory
     # os.system(f"cp -r {cargo_harness_dir}/* {temp_dir}")
@@ -411,15 +458,21 @@ def run_with_timeout(cmd: str, tmp_cargo_path: str, timeout: float = 5.0, print_
     rmdir = os.rmdir
     chdir = os.chdir
 
+    p = None
     try:
         with swallow_io():
-            with time_limit(timeout):
-                # run the command
-                p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, cwd=tmp_cargo_path)
-                out, err = p.communicate()
+            p = subprocess.Popen(
+                cmd,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=tmp_cargo_path,
+            )
+            out, err = p.communicate(timeout=timeout)
     except Exception:
-        p.kill()
+        if p is not None:
+            p.kill()
+            p.communicate()
         return None
     
     # if p.returncode != 0:
