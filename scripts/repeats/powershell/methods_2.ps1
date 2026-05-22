@@ -16,7 +16,7 @@ $repeats = 1
 
 $provider = "openai"
 $apiKey = "OPENAI_API_KEY_CLAN"
-$model = "gpt-4.1-mini"
+$model = "gpt-4.1-nano"
 
 $configPath = Join-Path "scripts/configs" "$benchmark.env"
 Get-Content -Path $configPath | ForEach-Object {
