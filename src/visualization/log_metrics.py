@@ -727,9 +727,9 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
 def main() -> None:
     config = OmegaConf.load("actions_config.yaml")
     write_outputs(
-        Path(config.actions.visualize.log_path),
-        Path(config.actions.visualize.raw_path),
-        Path(config.actions.visualize.output_path),
+        logs_dir=Path(config.actions.visualize.log_path),
+        raw_dir=Path(config.actions.visualize.raw_path),
+        output_dir=Path(config.actions.visualize.output_path),
     )
 
 
