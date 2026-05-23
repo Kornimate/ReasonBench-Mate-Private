@@ -2,3 +2,4 @@
 save = "python -m src.checkpoint.log_saver"
 log_visualize = "python -m src.visualization.log_metrics"
 ds_visualize = "python -m src.visualization.dataset_metrics"
+log_stats = "python -m src.stats.log_stats"
