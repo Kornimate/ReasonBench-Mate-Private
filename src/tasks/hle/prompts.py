@@ -93,6 +93,34 @@ Existing steps:
 {existing_steps}
 Output:'''
 
+self_evaluate_step = '''You are evaluating the next reasoning/action step for a question-answering task.
+Decide whether the proposed step is useful, relevant, and logically consistent with the question and prior steps.
+Answer with only "Yes" or "No".
+
+Question: {question}
+Previous steps:
+{previous_steps}
+
+Proposed step:
+{step}
+
+Answer:'''
+
+self_evaluate_answer = '''You are evaluating whether a proposed final answer correctly answers the question.
+Answer with only "Yes" or "No".
+
+Question: {question}
+Reasoning steps:
+{steps}
+
+Proposed final answer:
+{answer}
+
+Reference answer:
+{correct_answer}
+
+Answer:'''
+
 ### Judge prompt to evaluate the final answer correctness based on the ground truth answer.
 JUDGE_PROMPT = """Judge whether the following [response] to [question] is correct or not based on the precise and unambiguous [correct_answer] below.
 

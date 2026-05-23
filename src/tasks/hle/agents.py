@@ -1,8 +1,10 @@
 import re
 from typing import List, Tuple
+import numpy as np
 
 from . import prompts as prompts
 from .state import StateHLE
+from .environment import extract_answer, parse_action
 from ... import AgentFactory
 from ...typedefs import Agent, Model, DecodingParameters
 from ...utils import build_population_prediction_prompt, parse_population_prediction
@@ -291,6 +293,66 @@ class AgentEvaluateHLE(Agent):
             if cache is not None:
                 cache[state.current_state] = value
             state.values[state.step_n] = value
+        return value
+
+@AgentFactory.register
+class AgentSelfEvaluateHLE(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHLE,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+        cache: dict = None,
+    ) -> float:
+        cache_key = f"self:{state.current_state}"
+        if cache is not None and cache_key in cache:
+            return cache[cache_key]
+
+        latest_step = state.steps[-1] if state.steps else ""
+        action_line = ""
+        if latest_step:
+            lines = [line.strip() for line in latest_step.splitlines() if line.strip()]
+            for line in reversed(lines):
+                if line.lower().startswith("action"):
+                    action_line = line.split(":", 1)[-1].strip()
+                    break
+
+        action_type, action_argument = parse_action(action_line) if action_line else (None, None)
+
+        if action_type == "Finish":
+            judged = extract_answer(state.question, state.answer, action_argument or latest_step)
+            value = 20.0 if judged and judged.get("correct") == "yes" else 0.001
+        else:
+            prompt = prompts.self_evaluate_step.format(
+                question=state.question,
+                previous_steps="\n".join(state.steps[:-1]) if len(state.steps) > 1 else "None",
+                step=latest_step or state.current_state or "None",
+            )
+
+            responses = await model.request(
+                prompt=prompt,
+                n=n,
+                request_id=request_id,
+                namespace=namespace,
+                params=params,
+            )
+
+            votes = []
+            for response in responses:
+                answer = str(response).strip().lower()
+                if answer.startswith("yes"):
+                    votes.append(1.0)
+                elif answer.startswith("no"):
+                    votes.append(0.0)
+                else:
+                    votes.append(0.5)
+            value = float(np.mean(votes)) if votes else 0.001
+
+        if cache is not None:
+            cache[cache_key] = value
         return value
     
 # ---Helper functions---#
