@@ -1,15 +1,15 @@
 $benchmarks = @(
-    "game24"
+    # "game24"
     "hle"
-    "hotpotqa"
-    "humaneval"
-    "logiqa"
-    "matharena"
+    # "hotpotqa"
+    # "humaneval"
+    # "logiqa"
+    # "matharena"
     # "mimic_rrs"
     # "mtsamples_procedures"
     # "pubmed_qa"
-    "scibench"
-    "sonnetwriting"
+    # "scibench"
+    # "sonnetwriting"
 )
 
 $method = "rap"
