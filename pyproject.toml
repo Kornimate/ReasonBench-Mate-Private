@@ -1,4 +1,4 @@
 [tool.poe.tasks]
-save = "python src/checkpoint/log_saver.py"
-log_visualize = "python src/visualization/log_metrics.py"
-ds_visualize = "python src/visualization/dataset_metrics.py"
+save = "python -m src.checkpoint.log_saver"
+log_visualize = "python -m src.visualization.log_metrics"
+ds_visualize = "python -m src.visualization.dataset_metrics"

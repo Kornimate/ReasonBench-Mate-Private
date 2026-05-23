@@ -353,7 +353,7 @@ def write_outputs(output_dir: Path, split: str) -> None:
 def main() -> None:
     config = OmegaConf.load("actions_config.yaml")
     write_outputs(
-        output_dir=config.actions.visualize.output_path,
+        output_dir=Path(config.actions.visualize.output_path),
         split="full",
     )
 
