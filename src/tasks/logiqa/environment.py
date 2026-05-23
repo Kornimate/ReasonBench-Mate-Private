@@ -56,7 +56,7 @@ class EnvironmentLogiQA(Environment):
         Evaluates the current state.
         """
         if EnvironmentLogiQA().is_final(state):
-            answer = state.current_state.strip().lower()
+            answer = get_answer(state.current_state)
             correct_answer = state.correct_option.strip().lower()
             if answer == correct_answer:
                 return True, 1.0
@@ -70,8 +70,11 @@ class EnvironmentLogiQA(Environment):
 def get_answer(text) -> str:
     valid_options = "abcd"
     action_taken = text.strip().lower()
+    if action_taken.startswith("answer:"):
+        action_taken = action_taken.replace("answer:", "", 1).strip()
     if action_taken not in valid_options and len(action_taken) == 1:
-        action_taken = valid_options[int(action_taken)-1]
+        if action_taken.isdigit() and 1 <= int(action_taken) <= len(valid_options):
+            action_taken = valid_options[int(action_taken)-1]
     elif action_taken not in valid_options:
         action_taken = action_taken.replace(".", " ").split(" ")[0].strip()
 

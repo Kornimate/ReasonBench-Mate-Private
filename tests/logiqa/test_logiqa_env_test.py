@@ -49,6 +49,32 @@ class TestLogiQAEnvironment:
 
         assert new_state.current_state == 'c'
 
+    def test_environment_step_given_invalid_single_character(self):
+        _, state = self.benchmark[0]
+
+        new_state = self.env.step(state, '-')
+
+        assert new_state.current_state == '-'
+
+    def test_environment_evaluate_invalid_single_character(self):
+        _, state = self.benchmark[0]
+
+        new_state = self.env.step(state, '-')
+        finished, points = self.env.evaluate(new_state)
+
+        assert not finished
+        assert points == 0.0
+
+    def test_environment_evaluate_invalid_answer_prefix(self):
+        _, state = self.benchmark[0]
+
+        new_state = self.env.step(state, 'Answer: -')
+        finished, points = self.env.evaluate(new_state)
+
+        assert new_state.current_state == '-'
+        assert not finished
+        assert points == 0.0
+
     def test_environment_evaluate_correct(self):
         _, state = self.benchmark[0]
 
