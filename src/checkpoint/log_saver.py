@@ -15,12 +15,17 @@ def save_logs(log_dir: str, save_path: str):
             for file in files:
                 file_path = os.path.join(root, file)
                 zipf.write(file_path, os.path.relpath(file_path, log_dir))
+
+def get_file_name():
+    name = input("Enter file name/id: ")
+    return name.strip().replace(" ", "_")
                 
 def main():
+    file_name = get_file_name()
     config = OmegaConf.load("actions_config.yaml")
     LOG_DIRECTORY = config.actions.save.log_path
     SAVE_PATH = config.actions.save.save_path
-    FILE_NAME = f"logs_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.zip"
+    FILE_NAME = f"logs_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{file_name}.zip"
     save_logs(
         LOG_DIRECTORY,
         os.path.join(SAVE_PATH, FILE_NAME)
