@@ -1,9 +1,9 @@
 $methods = @(
     # "io"
     # "cot"
-    "cot_sc"
-    "react"
-    "tot_bfs"
+    # "cot_sc"
+    # "react"
+    # "tot_bfs"
     "rap"
     "foa"
     # "heterogeneous_foa"
