@@ -62,9 +62,11 @@ class StateHLE(State):
             raw_subject=self.raw_subject,
             category=self.category,
             canary=self.canary,
-            steps=self.steps,
+            steps=self.steps.copy(),
             randomness=randomness or self.randomness,
-            current_state=self.current_state
+            current_state=self.current_state,
+            values=self.values.copy(),
+            step_n=self.step_n,
         )
 
     def get_seed(self) -> int:
