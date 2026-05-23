@@ -1,9 +1,9 @@
-$benchmark = "humaneval"
+$benchmark = "mtsamples_procedures"
 $method = "io"
 $split = "single"
 
 $provider = "openai"
-$apiKey = "OPENAI_API_KEY"
+$apiKey = "OPENAI_API_KEY_CLAN"
 $model = "gpt-4.1-nano"
 
 $configPath = Join-Path "scripts/configs" "$benchmark.env"
