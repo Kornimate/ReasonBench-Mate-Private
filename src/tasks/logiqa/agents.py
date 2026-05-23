@@ -7,6 +7,7 @@ from .state import StateLogiQA
 from ... import AgentFactory
 from ...typedefs import Agent, Model, DecodingParameters
 from ...utils import build_population_prediction_prompt, parse_population_prediction
+from .environment import get_answer
 
 
 def parse_answer(response: str) -> str:
