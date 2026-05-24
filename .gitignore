@@ -17,3 +17,4 @@ datasets/dataset_wildchat.csv.gz
 /datasets/medical/mimic_rrs/
 /datasets/medical/pubmed_qa/
 OUT/
+/results
