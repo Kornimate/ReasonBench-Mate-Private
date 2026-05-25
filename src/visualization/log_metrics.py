@@ -474,6 +474,8 @@ def convergence_auc(logs: list[MethodLog]) -> pd.DataFrame:
 RAW_USER_MARKER = "********\n* USER *\n********"
 RAW_N_PATTERN = re.compile(r"\* N:\s*(?P<n>\d+)\s*\*")
 RAW_RESPONSE_PATTERN = re.compile(r"\* RESPONSE\s+(?P<num>\d+)\s*\*")
+MAX_EDIT_DISTANCE_RESPONSES = 6
+MAX_EDIT_DISTANCE_CHARS = 200
 
 
 def parse_raw_call_log(path: Path) -> list[dict[str, Any]]:
@@ -517,6 +519,8 @@ def levenshtein(a: str, b: str) -> int:
         return len(b)
     if not b:
         return len(a)
+    if len(a) < len(b):
+        a, b = b, a
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
         curr = [i]
@@ -526,14 +530,32 @@ def levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+def sample_texts_for_distance(texts: list[str], limit: int = MAX_EDIT_DISTANCE_RESPONSES) -> list[str]:
+    if len(texts) <= limit:
+        return texts
+    # Keep the sample deterministic and spread across the full response set.
+    indices = {round(i * (len(texts) - 1) / (limit - 1)) for i in range(limit)}
+    return [texts[index] for index in sorted(indices)]
+
+
+def approximate_normalized_distance(a: str, b: str) -> float:
+    if a == b:
+        return 0.0
+    denom = max(len(a), len(b), 1)
+    overlap = min(len(a), len(b))
+    mismatches = sum(1 for i in range(overlap) if a[i] != b[i])
+    mismatches += abs(len(a) - len(b))
+    return mismatches / denom
+
+
 def mean_pairwise_edit_distance(texts: list[str]) -> float | None:
     if len(texts) < 2:
         return None
+    texts = [text[:MAX_EDIT_DISTANCE_CHARS] for text in sample_texts_for_distance(texts)]
     distances = []
     for i in range(len(texts)):
         for j in range(i + 1, len(texts)):
-            denom = max(len(texts[i]), len(texts[j]), 1)
-            distances.append(levenshtein(texts[i], texts[j]) / denom)
+            distances.append(approximate_normalized_distance(texts[i], texts[j]))
     return mean(distances) if distances else None
 
 
@@ -605,9 +627,12 @@ def benchmark_output(output: Path, benchmark: Any) -> Path:
 def grouped_mean(df: pd.DataFrame, metric: str, group_by: list[str]) -> pd.DataFrame:
     if df.empty or metric not in df.columns:
         return pd.DataFrame()
+    group_columns = [column for column in ("benchmark", "method") if column in df.columns]
+    if not group_columns:
+        return pd.DataFrame()
     return (
         df.dropna(subset=[metric])
-        .groupby(group_by, dropna=False)[metric]
+        .groupby(group_columns, dropna=False)[metric]
         .mean()
         .reset_index()
     )
@@ -618,54 +643,55 @@ def plot_bar_by_benchmark(df: pd.DataFrame, metric: str, title: str, output: Pat
     if plot_df.empty:
         return
     plt = ensure_matplotlib()
-    for benchmark, benchmark_df in plot_df.groupby("benchmark", dropna=False):
-        benchmark_df = benchmark_df.sort_values("method")
-        labels = [str(method) for method in benchmark_df["method"]]
-        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
-        plt.bar(labels, benchmark_df[metric])
-        plt.title(f"{title} - {benchmark}")
-        plt.ylabel(metric)
-        plt.xticks(rotation=45, ha="right")
-        plt.tight_layout()
-        plt.savefig(benchmark_output(output, benchmark), dpi=180)
-        plt.close()
+    labels = [
+        "\n".join(str(getattr(row, column)) for column in ("benchmark", "method") if hasattr(row, column))
+        for row in plot_df.itertuples()
+    ]
+    plt.figure(figsize=(max(8, len(labels) * 0.45), 5))
+    plt.bar(labels, plot_df[metric])
+    plt.title(title)
+    plt.ylabel(metric)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.savefig(output, dpi=180)
+    plt.close()
 
 
 def plot_convergence_by_benchmark(df: pd.DataFrame, output: Path) -> None:
     if df.empty or "trajectory" not in df.columns:
         return
     plt = ensure_matplotlib()
-    for benchmark, benchmark_df in df.groupby("benchmark", dropna=False):
-        plt.figure(figsize=(9, 5))
-        has_curve = False
-        for method, group in benchmark_df.groupby("method", dropna=False):
-            curves = []
-            for value in group["trajectory"]:
-                try:
-                    trajectory = json.loads(value)
-                except Exception:
-                    trajectory = []
-                if trajectory:
-                    curves.append(trajectory)
-            if not curves:
-                continue
-            max_len = max(len(curve) for curve in curves)
-            y = []
-            for pos in range(max_len):
-                vals = [curve[pos][1] for curve in curves if pos < len(curve)]
-                y.append(mean(vals))
-            plt.plot(range(len(y)), y, marker="o", label=str(method))
-            has_curve = True
-        if not has_curve:
-            plt.close()
+    plt.figure(figsize=(12, 6))
+    group_columns = [column for column in ("benchmark", "method") if column in df.columns]
+    if not group_columns:
+        return
+    for group_key, group in df.groupby(group_columns, dropna=False):
+        if not isinstance(group_key, tuple):
+            group_key = (group_key,)
+        label = "/".join(str(value) for value in group_key)
+        curves = []
+        for value in group["trajectory"]:
+            try:
+                trajectory = json.loads(value)
+            except Exception:
+                trajectory = []
+            if trajectory:
+                curves.append(trajectory)
+        if not curves:
             continue
-        plt.title(f"Logged Best-Score Convergence - {benchmark}")
-        plt.xlabel("Logged step position")
-        plt.ylabel("running best logged score")
-        plt.legend(fontsize=7)
-        plt.tight_layout()
-        plt.savefig(benchmark_output(output, benchmark), dpi=180)
-        plt.close()
+        max_len = max(len(curve) for curve in curves)
+        y = []
+        for pos in range(max_len):
+            vals = [curve[pos][1] for curve in curves if pos < len(curve)]
+            y.append(mean(vals))
+        plt.plot(range(len(y)), y, marker="o", label=label)
+    plt.title("Logged Best-Score Convergence")
+    plt.xlabel("Logged step position")
+    plt.ylabel("running best logged score")
+    plt.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1))
+    plt.subplots_adjust(right=0.78)
+    plt.savefig(output, dpi=180, bbox_inches="tight")
+    plt.close()
 
 
 def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
@@ -694,38 +720,232 @@ def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
 def plot_raw_agreement_by_method_and_benchmark(df: pd.DataFrame, output: Path) -> None:
     if df.empty or "method" not in df.columns:
         return
+    group_columns = [column for column in ("benchmark", "method") if column in df.columns]
     plot_df = (
         df.dropna(subset=["majority_agreement"])
-        .groupby(["benchmark", "method"], dropna=False)["majority_agreement"]
+        .groupby(group_columns, dropna=False)["majority_agreement"]
         .mean()
         .reset_index()
     )
     if plot_df.empty:
         return
     plt = ensure_matplotlib()
-    for benchmark, benchmark_df in plot_df.groupby("benchmark", dropna=False):
-        benchmark_df = benchmark_df.sort_values("method")
-        labels = [str(method) for method in benchmark_df["method"]]
-        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
-        plt.bar(labels, benchmark_df["majority_agreement"])
-        plt.title(f"Raw Call Majority Agreement - {benchmark}")
-        plt.ylabel("mean majority agreement")
-        plt.ylim(0, 1.05)
-        plt.xticks(rotation=45, ha="right")
-        plt.tight_layout()
-        plt.savefig(benchmark_output(output, benchmark), dpi=180)
-        plt.close()
+    labels = [
+        "\n".join(str(getattr(row, column)) for column in ("benchmark", "method") if hasattr(row, column))
+        for row in plot_df.itertuples()
+    ]
+    plt.figure(figsize=(max(8, len(labels) * 0.45), 5))
+    plt.bar(labels, plot_df["majority_agreement"])
+    plt.title("Raw Call Majority Agreement")
+    plt.ylabel("mean majority agreement")
+    plt.ylim(0, 1.05)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.savefig(output, dpi=180)
+    plt.close()
+
+
+METHOD_GROUP_COLUMNS = ["model", "method"]
+
+
+def numeric_sum(series: pd.Series) -> float | None:
+    values = series.dropna()
+    return float(values.sum()) if not values.empty else None
+
+
+def numeric_mean(series: pd.Series) -> float | None:
+    values = series.dropna()
+    return float(values.mean()) if not values.empty else None
+
+
+def weighted_mean(values: pd.Series, weights: pd.Series) -> float | None:
+    data = pd.DataFrame({"value": values, "weight": weights}).dropna()
+    data = data[data["weight"] > 0]
+    if data.empty:
+        return None
+    return float((data["value"] * data["weight"]).sum() / data["weight"].sum())
+
+
+def grouped_method_rows(df: pd.DataFrame):
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    if df.empty or not group_columns:
+        return []
+    return df.groupby(group_columns, dropna=False)
+
+
+def base_method_row(group_key: Any, group_columns: list[str], group: pd.DataFrame) -> dict[str, Any]:
+    if not isinstance(group_key, tuple):
+        group_key = (group_key,)
+    row = dict(zip(group_columns, group_key))
+    row["log_count"] = len(group)
+    return row
+
+
+def aggregate_effort_by_method(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    for group_key, group in grouped_method_rows(df):
+        row = base_method_row(group_key, group_columns, group)
+        accumulated_score = numeric_sum(group["final_score"])
+        method_effort = numeric_sum(group["method_effort"])
+        calls_total = numeric_sum(group["calls_total"])
+        row.update(
+            {
+                "final_score": numeric_mean(group["final_score"]),
+                "accumulated_score": accumulated_score,
+                "event_count": numeric_sum(group["event_count"]),
+                "method_effort": method_effort,
+                "steps_observed": numeric_mean(group["steps_observed"]),
+                "steps_to_first_solution": numeric_mean(group["steps_to_first_solution"]),
+                "min_steps_to_first_solution": group["steps_to_first_solution"].dropna().min()
+                if group["steps_to_first_solution"].notna().any()
+                else None,
+                "calls_total": calls_total,
+                "score_per_method_effort": safe_ratio(accumulated_score, method_effort),
+                "score_per_call": safe_ratio(accumulated_score, calls_total),
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def aggregate_usage_by_method(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    sum_columns = [
+        "calls_total",
+        "calls_saved_by_cacher",
+        "calls_saved_by_deduplicator",
+        "calls_without_cache_or_dedup",
+        "input_tokens",
+        "output_tokens",
+        "cached_tokens",
+        "total_tokens",
+        "input_tokens_saved_by_cacher",
+        "output_tokens_saved_by_cacher",
+        "tokens_saved_by_cacher",
+        "input_tokens_saved_by_deduplicator",
+        "output_tokens_saved_by_deduplicator",
+        "tokens_saved_by_deduplicator",
+        "total_tokens_with_saved",
+        "input_cost",
+        "output_cost",
+        "total_cost",
+        "input_cost_saved_by_cacher",
+        "output_cost_saved_by_cacher",
+        "total_cost_saved_by_cacher",
+        "input_cost_saved_by_deduplicator",
+        "output_cost_saved_by_deduplicator",
+        "total_cost_saved_by_deduplicator",
+        "total_cost_with_saved",
+    ]
+    for group_key, group in grouped_method_rows(df):
+        row = base_method_row(group_key, group_columns, group)
+        accumulated_score = numeric_sum(group["final_score"])
+        row["final_score"] = numeric_mean(group["final_score"])
+        row["accumulated_score"] = accumulated_score
+        for column in sum_columns:
+            if column in group:
+                row[column] = numeric_sum(group[column])
+        saved_tokens = add_optional_values(row.get("tokens_saved_by_cacher"), row.get("tokens_saved_by_deduplicator"))
+        saved_cost = add_optional_values(
+            row.get("total_cost_saved_by_cacher"),
+            row.get("total_cost_saved_by_deduplicator"),
+        )
+        row["token_savings_ratio"] = safe_ratio(saved_tokens, row.get("total_tokens_with_saved"))
+        row["cost_savings_ratio"] = safe_ratio(saved_cost, row.get("total_cost_with_saved"))
+        row["score_per_call"] = safe_ratio(accumulated_score, row.get("calls_total"))
+        row["score_per_1k_tokens"] = safe_ratio(
+            accumulated_score,
+            row["total_tokens"] / 1000 if row.get("total_tokens") else None,
+        )
+        row["score_per_dollar"] = safe_ratio(accumulated_score, row.get("total_cost"))
+        row["cost_per_call"] = safe_ratio(row.get("total_cost"), row.get("calls_total"))
+        row["tokens_per_call"] = safe_ratio(row.get("total_tokens"), row.get("calls_total"))
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def aggregate_diversity_by_method(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    for group_key, group in grouped_method_rows(df):
+        row = base_method_row(group_key, group_columns, group)
+        row.update(
+            {
+                "action_entropy": numeric_mean(group["action_entropy"]),
+                "normalized_action_entropy": numeric_mean(group["normalized_action_entropy"]),
+                "mean_unique_action_ratio": numeric_mean(group["mean_unique_action_ratio"]),
+                "observed_action_mass": numeric_sum(group["observed_action_mass"]),
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def aggregate_trajectory(values: pd.Series) -> str:
+    by_step: dict[int, list[float]] = defaultdict(list)
+    for value in values.dropna():
+        try:
+            trajectory = json.loads(value)
+        except Exception:
+            continue
+        for point in trajectory:
+            if isinstance(point, (list, tuple)) and len(point) == 2:
+                step, score = point
+                if isinstance(step, int) and isinstance(score, (int, float)):
+                    by_step[step].append(float(score))
+    return json.dumps([(step, mean(scores)) for step, scores in sorted(by_step.items())])
+
+
+def aggregate_convergence_by_method(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    for group_key, group in grouped_method_rows(df):
+        row = base_method_row(group_key, group_columns, group)
+        row.update(
+            {
+                "convergence_auc": numeric_mean(group["convergence_auc"]),
+                "final_logged_best": numeric_mean(group["final_logged_best"]),
+                "solved_step": numeric_mean(group["solved_step"]),
+                "min_solved_step": group["solved_step"].dropna().min() if group["solved_step"].notna().any() else None,
+                "trajectory": aggregate_trajectory(group["trajectory"]),
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def aggregate_raw_by_method(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    for group_key, group in grouped_method_rows(df):
+        row = base_method_row(group_key, group_columns, group)
+        row.update(
+            {
+                "prompt_count": group["prompt_key"].nunique() if "prompt_key" in group else len(group),
+                "response_count": numeric_sum(group["response_count"]),
+                "mean_unique_answer_count": numeric_mean(group["unique_answer_count"]),
+                "answer_entropy": weighted_mean(group["answer_entropy"], group["response_count"]),
+                "normalized_answer_entropy": weighted_mean(group["normalized_answer_entropy"], group["response_count"]),
+                "majority_agreement": weighted_mean(group["majority_agreement"], group["response_count"]),
+                "mean_pairwise_edit_distance": weighted_mean(group["mean_pairwise_edit_distance"], group["response_count"]),
+                "mean_response_length": weighted_mean(group["mean_response_length"], group["response_count"]),
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     method_logs = iter_method_logs(logs_dir)
 
-    effort = effort_to_solution(method_logs)
-    diversity = exploration_diversity(method_logs)
-    convergence = convergence_auc(method_logs)
-    usage = usage_metrics(method_logs)
-    raw = raw_response_consistency(raw_dir)
+    effort = aggregate_effort_by_method(effort_to_solution(method_logs))
+    diversity = aggregate_diversity_by_method(exploration_diversity(method_logs))
+    convergence = aggregate_convergence_by_method(convergence_auc(method_logs))
+    usage = aggregate_usage_by_method(usage_metrics(method_logs))
+    raw = aggregate_raw_by_method(raw_response_consistency(raw_dir))
 
     effort.to_csv(output_dir / "effort_to_solution.csv", index=False)
     diversity.to_csv(output_dir / "exploration_diversity.csv", index=False)

@@ -21,6 +21,9 @@ class DatasetSpec:
     benchmark_class: str
     path: str
     extractor: Callable[[Any], tuple[str, str]]
+    helm_loader: str | None = None
+    helm_splitter: str | None = None
+    helm_dataset_dir: str | None = None
 
 
 def tokens(text: str) -> list[str]:
@@ -122,9 +125,33 @@ DATASETS = [
     DatasetSpec("sonnetwriting", "src.tasks.sonnetwriting.benchmark.BenchmarkSonnetWriting", "datasets/dataset_sonnetwriting.jsonl.gz", extract_sonnetwriting),
     DatasetSpec("logiqa", "src.tasks.logiqa.benchmark.BenchmarkLogiQA", "datasets/dataset_logiqa.csv.gz", extract_logiqa),
     DatasetSpec("matharena", "src.tasks.matharena.benchmark.BenchmarkMathArena", "datasets/dataset_matharena.jsonl.gz", extract_matharena),
-    DatasetSpec("pubmed_qa", "src.tasks.pubmed_qa.benchmark.BenchmarkPubMedQA", "datasets/dataset_pubmed_qa.csv.gz", extract_mapping),
-    DatasetSpec("mimic_rrs", "src.tasks.mimic_rrs.benchmark.BenchmarkMimic_RRS", "datasets/dataset_mimic_rrs.csv.gz", extract_mapping),
-    DatasetSpec("mtsamples_procedures", "src.tasks.mtsamples_procedures.benchmark.BenchmarkMTSamplesProcedures", "datasets/dataset_mtsamples_procedures.csv.gz", extract_mapping),
+    DatasetSpec(
+        "pubmed_qa",
+        "src.tasks.pubmed_qa.benchmark.BenchmarkPubMedQA",
+        "datasets/dataset_pubmed_qa.csv.gz",
+        extract_mapping,
+        helm_loader="src.tasks.pubmed_qa.benchmark.load_instances",
+        helm_splitter="src.tasks.pubmed_qa.benchmark.split_instances",
+        helm_dataset_dir="datasets/medical/pubmed_qa",
+    ),
+    DatasetSpec(
+        "mimic_rrs",
+        "src.tasks.mimic_rrs.benchmark.BenchmarkMimic_RRS",
+        "datasets/dataset_mimic_rrs.csv.gz",
+        extract_mapping,
+        helm_loader="src.tasks.mimic_rrs.benchmark.load_instances",
+        helm_splitter="src.tasks.mimic_rrs.benchmark.split_instances",
+        helm_dataset_dir="datasets/medical/mimic_rrs",
+    ),
+    DatasetSpec(
+        "mtsamples_procedures",
+        "src.tasks.mtsamples_procedures.benchmark.BenchmarkMTSamplesProcedures",
+        "datasets/dataset_mtsamples_procedures.csv.gz",
+        extract_mapping,
+        helm_loader="src.tasks.mtsamples_procedures.benchmark.load_instances",
+        helm_splitter="src.tasks.mtsamples_procedures.benchmark.split_instances",
+        helm_dataset_dir="datasets/medical/mtsamples_procedures",
+    ),
 ]
 
 
@@ -134,15 +161,29 @@ def import_class(path: str):
     return getattr(module, class_name)
 
 
+def load_helm_dataset(spec: DatasetSpec, split: str) -> list[dict[str, Any]]:
+    if not spec.helm_loader or not spec.helm_splitter or not spec.helm_dataset_dir:
+        raise ValueError(f"Dataset {spec.name} is missing HELM loader configuration.")
+
+    loader = import_class(spec.helm_loader)
+    splitter = import_class(spec.helm_splitter)
+    instances = loader(Path(spec.helm_dataset_dir))
+    return splitter(instances, split)
+
+
 def load_dataset(spec: DatasetSpec, split: str) -> tuple[pd.DataFrame, str | None]:
     try:
-        benchmark_cls = import_class(spec.benchmark_class)
-        benchmark = benchmark_cls(spec.path, split=split)
+        if spec.helm_loader:
+            data = load_helm_dataset(spec, split)
+        else:
+            benchmark_cls = import_class(spec.benchmark_class)
+            benchmark = benchmark_cls(spec.path, split=split)
+            data = getattr(benchmark, "data", [])
     except Exception as exc:
         return pd.DataFrame(), f"{type(exc).__name__}: {exc}"
 
     rows = []
-    for i, row in enumerate(getattr(benchmark, "data", [])):
+    for i, row in enumerate(data):
         try:
             input_text, answer_text = spec.extractor(row)
         except Exception:
