@@ -592,62 +592,80 @@ def ensure_matplotlib():
     return plt
 
 
-def grouped_mean(df: pd.DataFrame, metric: str) -> pd.DataFrame:
+def safe_filename(value: Any) -> str:
+    text = "unknown" if value is None or pd.isna(value) else str(value)
+    text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text.strip())
+    return text.strip("_") or "unknown"
+
+
+def benchmark_output(output: Path, benchmark: Any) -> Path:
+    return output.with_name(f"{output.stem}_{safe_filename(benchmark)}{output.suffix}")
+
+
+def grouped_mean(df: pd.DataFrame, metric: str, group_by: list[str]) -> pd.DataFrame:
     if df.empty or metric not in df.columns:
         return pd.DataFrame()
     return (
         df.dropna(subset=[metric])
-        .groupby(["benchmark", "method"], dropna=False)[metric]
+        .groupby(group_by, dropna=False)[metric]
         .mean()
         .reset_index()
     )
 
 
-def plot_bar(df: pd.DataFrame, metric: str, title: str, output: Path) -> None:
-    plot_df = grouped_mean(df, metric)
+def plot_bar_by_benchmark(df: pd.DataFrame, metric: str, title: str, output: Path) -> None:
+    plot_df = grouped_mean(df, metric, ["benchmark", "method"])
     if plot_df.empty:
         return
     plt = ensure_matplotlib()
-    labels = [f"{row.benchmark}\n{row.method}" for row in plot_df.itertuples()]
-    plt.figure(figsize=(max(8, len(labels) * 0.45), 5))
-    plt.bar(labels, plot_df[metric])
-    plt.title(title)
-    plt.ylabel(metric)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    plt.savefig(output, dpi=180)
-    plt.close()
+    for benchmark, benchmark_df in plot_df.groupby("benchmark", dropna=False):
+        benchmark_df = benchmark_df.sort_values("method")
+        labels = [str(method) for method in benchmark_df["method"]]
+        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
+        plt.bar(labels, benchmark_df[metric])
+        plt.title(f"{title} - {benchmark}")
+        plt.ylabel(metric)
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        plt.savefig(benchmark_output(output, benchmark), dpi=180)
+        plt.close()
 
 
-def plot_convergence(df: pd.DataFrame, output: Path) -> None:
+def plot_convergence_by_benchmark(df: pd.DataFrame, output: Path) -> None:
     if df.empty or "trajectory" not in df.columns:
         return
     plt = ensure_matplotlib()
-    plt.figure(figsize=(9, 5))
-    for (benchmark, method), group in df.groupby(["benchmark", "method"], dropna=False):
-        curves = []
-        for value in group["trajectory"]:
-            try:
-                trajectory = json.loads(value)
-            except Exception:
-                trajectory = []
-            if trajectory:
-                curves.append(trajectory)
-        if not curves:
+    for benchmark, benchmark_df in df.groupby("benchmark", dropna=False):
+        plt.figure(figsize=(9, 5))
+        has_curve = False
+        for method, group in benchmark_df.groupby("method", dropna=False):
+            curves = []
+            for value in group["trajectory"]:
+                try:
+                    trajectory = json.loads(value)
+                except Exception:
+                    trajectory = []
+                if trajectory:
+                    curves.append(trajectory)
+            if not curves:
+                continue
+            max_len = max(len(curve) for curve in curves)
+            y = []
+            for pos in range(max_len):
+                vals = [curve[pos][1] for curve in curves if pos < len(curve)]
+                y.append(mean(vals))
+            plt.plot(range(len(y)), y, marker="o", label=str(method))
+            has_curve = True
+        if not has_curve:
+            plt.close()
             continue
-        max_len = max(len(curve) for curve in curves)
-        y = []
-        for pos in range(max_len):
-            vals = [curve[pos][1] for curve in curves if pos < len(curve)]
-            y.append(mean(vals))
-        plt.plot(range(len(y)), y, marker="o", label=f"{benchmark}/{method}")
-    plt.title("Logged Best-Score Convergence")
-    plt.xlabel("Logged step position")
-    plt.ylabel("running best logged score")
-    plt.legend(fontsize=7)
-    plt.tight_layout()
-    plt.savefig(output, dpi=180)
-    plt.close()
+        plt.title(f"Logged Best-Score Convergence - {benchmark}")
+        plt.xlabel("Logged step position")
+        plt.ylabel("running best logged score")
+        plt.legend(fontsize=7)
+        plt.tight_layout()
+        plt.savefig(benchmark_output(output, benchmark), dpi=180)
+        plt.close()
 
 
 def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
@@ -673,7 +691,7 @@ def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
     plt.close()
 
 
-def plot_raw_agreement_by_method(df: pd.DataFrame, output: Path) -> None:
+def plot_raw_agreement_by_method_and_benchmark(df: pd.DataFrame, output: Path) -> None:
     if df.empty or "method" not in df.columns:
         return
     plot_df = (
@@ -685,16 +703,18 @@ def plot_raw_agreement_by_method(df: pd.DataFrame, output: Path) -> None:
     if plot_df.empty:
         return
     plt = ensure_matplotlib()
-    labels = [f"{row.benchmark}\n{row.method}" for row in plot_df.itertuples()]
-    plt.figure(figsize=(max(8, len(labels) * 0.45), 5))
-    plt.bar(labels, plot_df["majority_agreement"])
-    plt.title("Raw Call Majority Agreement")
-    plt.ylabel("mean majority agreement")
-    plt.ylim(0, 1.05)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    plt.savefig(output, dpi=180)
-    plt.close()
+    for benchmark, benchmark_df in plot_df.groupby("benchmark", dropna=False):
+        benchmark_df = benchmark_df.sort_values("method")
+        labels = [str(method) for method in benchmark_df["method"]]
+        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
+        plt.bar(labels, benchmark_df["majority_agreement"])
+        plt.title(f"Raw Call Majority Agreement - {benchmark}")
+        plt.ylabel("mean majority agreement")
+        plt.ylim(0, 1.05)
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        plt.savefig(benchmark_output(output, benchmark), dpi=180)
+        plt.close()
 
 
 def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
@@ -713,15 +733,25 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     usage.to_csv(output_dir / "usage_metrics.csv", index=False)
     raw.to_csv(output_dir / "raw_response_consistency.csv", index=False)
 
-    plot_bar(effort, "score_per_method_effort", "Score per Method Effort", output_dir / "effort_to_solution.png")
-    plot_bar(diversity, "normalized_action_entropy", "Exploration Diversity", output_dir / "exploration_diversity.png")
-    plot_convergence(convergence, output_dir / "convergence_auc.png")
-    plot_bar(usage, "calls_total", "Total Calls", output_dir / "calls_total.png")
-    plot_bar(usage, "total_tokens", "Total Tokens", output_dir / "total_tokens.png")
-    plot_bar(usage, "total_cost", "Total Cost", output_dir / "total_cost.png")
-    plot_bar(usage, "score_per_dollar", "Score per Dollar", output_dir / "score_per_dollar.png")
+    plot_bar_by_benchmark(
+        effort,
+        "score_per_method_effort",
+        "Score per Method Effort",
+        output_dir / "effort_to_solution.png",
+    )
+    plot_bar_by_benchmark(
+        diversity,
+        "normalized_action_entropy",
+        "Exploration Diversity",
+        output_dir / "exploration_diversity.png",
+    )
+    plot_convergence_by_benchmark(convergence, output_dir / "convergence_auc.png")
+    plot_bar_by_benchmark(usage, "calls_total", "Total Calls", output_dir / "calls_total.png")
+    plot_bar_by_benchmark(usage, "total_tokens", "Total Tokens", output_dir / "total_tokens.png")
+    plot_bar_by_benchmark(usage, "total_cost", "Total Cost", output_dir / "total_cost.png")
+    plot_bar_by_benchmark(usage, "score_per_dollar", "Score per Dollar", output_dir / "score_per_dollar.png")
     plot_raw_consistency(raw, output_dir / "raw_response_consistency.png")
-    plot_raw_agreement_by_method(raw, output_dir / "raw_majority_agreement.png")
+    plot_raw_agreement_by_method_and_benchmark(raw, output_dir / "raw_majority_agreement.png")
 
 
 def main() -> None:
