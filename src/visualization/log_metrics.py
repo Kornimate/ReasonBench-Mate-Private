@@ -7,7 +7,7 @@ import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 from typing import Any
 from omegaconf import OmegaConf
 
@@ -33,10 +33,30 @@ EVENT_PATTERN = re.compile(r"^\s*(?P<label>[A-Z0-9_]+)\s+(?P<payload>\{.*\})\s*$
 INFO_PREFIX_PATTERN = re.compile(r"^(?:INFO:[^:]+:)?(?P<message>.*)$")
 SAMPLE_PATTERN = re.compile(r"Sample\s+(?P<sample>\d+):\s+solved=(?P<solved>True|False)\s+score=(?P<score>-?\d+(?:\.\d+)?)")
 AVG_PATTERN = re.compile(r"Average correctness:\s*(?P<score>-?\d+(?:\.\d+)?)")
+TOTAL_CLOCKTIME_PATTERN = re.compile(r"Duration:.*?Total clocktime \(in seconds\):\s*(?P<value>-?\d+(?:\.\d+)?)", re.DOTALL)
+DURATIONS_PATTERN = re.compile(
+    r"Duration:.*?Individual durations of each sample \(in seconds\):\s*(?P<values>\[.*?\])",
+    re.DOTALL,
+)
+QUALITY_CORRECT_PATTERN = re.compile(r"Quality:.*?Correct:\s*(?P<values>\[.*?\])", re.DOTALL)
 USAGE_PATTERN = re.compile(
     r"^(?P<kind>Calls|Tokens|Cost) "
     r"\((?P<scope>total|saved by cacher|saved by deduplicator)\):\s*(?P<value>.+)$"
 )
+
+SOLVED_THRESHOLDS = {
+    "game24": 1.0,
+    "hle": 1.0,
+    "hotpotqa": 1.0,
+    "humaneval": 1.0,
+    "logiqa": 1.0,
+    "matharena": 1.0,
+    "mimic_rrs": 4.0,
+    "mtsamples_procedures": 3.8,
+    "pubmed_qa": 1.0,
+    "scibench": 1.0,
+    "sonnetwriting": 1.0,
+}
 
 
 @dataclass
@@ -69,6 +89,9 @@ class MethodLog:
     input_cost_saved_by_deduplicator: float | None = None
     output_cost_saved_by_deduplicator: float | None = None
     total_cost_saved_by_deduplicator: float | None = None
+    total_clocktime: float | None = None
+    sample_durations: list[float] = field(default_factory=list)
+    quality_scores: list[float] = field(default_factory=list)
 
 
 def strip_log_prefix(line: str) -> str:
@@ -76,10 +99,24 @@ def strip_log_prefix(line: str) -> str:
     return match.group("message").strip() if match else line.strip()
 
 
+def stripped_log_text(text: str) -> str:
+    return "\n".join(strip_log_prefix(line) for line in text.splitlines())
+
+
 def as_float(value: Any) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     return None
+
+
+def parse_float_list(value: str) -> list[float]:
+    try:
+        parsed = ast.literal_eval(value)
+    except (SyntaxError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [float(item) for item in parsed if isinstance(item, (int, float))]
 
 
 def set_usage_metric(parsed: MethodLog, kind: str, scope: str, value: str) -> None:
@@ -166,7 +203,22 @@ def parse_method_log(path: Path) -> MethodLog:
     context = infer_context(path)
     parsed = MethodLog(path=path, **context)
 
-    for raw_line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    cleaned_text = stripped_log_text(text)
+
+    total_clocktime_match = TOTAL_CLOCKTIME_PATTERN.search(cleaned_text)
+    if total_clocktime_match:
+        parsed.total_clocktime = float(total_clocktime_match.group("value"))
+
+    durations_match = DURATIONS_PATTERN.search(cleaned_text)
+    if durations_match:
+        parsed.sample_durations = parse_float_list(durations_match.group("values"))
+
+    quality_match = QUALITY_CORRECT_PATTERN.search(cleaned_text)
+    if quality_match:
+        parsed.quality_scores = parse_float_list(quality_match.group("values"))
+
+    for raw_line in cleaned_text.splitlines():
         line = strip_log_prefix(raw_line)
         if not line:
             continue
@@ -386,6 +438,52 @@ def usage_metrics(logs: list[MethodLog]) -> pd.DataFrame:
                 "score_per_dollar": safe_ratio(score, log.total_cost),
                 "cost_per_call": safe_ratio(log.total_cost, log.calls_total),
                 "tokens_per_call": safe_ratio(total_tokens, log.calls_total),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def solved_threshold(benchmark: str | None) -> float:
+    return SOLVED_THRESHOLDS.get(str(benchmark), 1.0)
+
+
+def quality_solution_metrics(logs: list[MethodLog]) -> pd.DataFrame:
+    rows = []
+    for log in logs:
+        if not log.quality_scores and not log.sample_durations and log.total_clocktime is None:
+            continue
+
+        threshold = solved_threshold(log.benchmark)
+        solved_flags = [score >= threshold for score in log.quality_scores]
+        solved_count = sum(solved_flags)
+        sample_count = max(len(log.quality_scores), len(log.sample_durations))
+        paired_durations = list(zip(log.sample_durations, solved_flags))
+        solved_durations = [duration for duration, solved in paired_durations if solved]
+        total_sample_duration = sum(log.sample_durations) if log.sample_durations else None
+
+        rows.append(
+            {
+                "model": log.model,
+                "benchmark": log.benchmark,
+                "method": log.method,
+                "split": log.split,
+                "repeat": log.repeat,
+                "solved_threshold": threshold,
+                "sample_count": sample_count or None,
+                "quality_mean": mean(log.quality_scores) if log.quality_scores else None,
+                "quality_median": median(log.quality_scores) if log.quality_scores else None,
+                "quality_min": min(log.quality_scores) if log.quality_scores else None,
+                "quality_max": max(log.quality_scores) if log.quality_scores else None,
+                "solved_count": solved_count if log.quality_scores else None,
+                "solved_rate": safe_ratio(solved_count, len(log.quality_scores)),
+                "total_clocktime": log.total_clocktime,
+                "total_sample_duration": total_sample_duration,
+                "mean_solution_time": mean(log.sample_durations) if log.sample_durations else None,
+                "median_solution_time": median(log.sample_durations) if log.sample_durations else None,
+                "mean_solved_solution_time": mean(solved_durations) if solved_durations else None,
+                "median_solved_solution_time": median(solved_durations) if solved_durations else None,
+                "clocktime_per_solved": safe_ratio(log.total_clocktime, solved_count),
+                "sample_time_per_solved": safe_ratio(total_sample_duration, solved_count),
             }
         )
     return pd.DataFrame(rows)
@@ -621,13 +719,31 @@ def safe_filename(value: Any) -> str:
 
 
 def benchmark_output(output: Path, benchmark: Any) -> Path:
+    if output.name == "overview.png":
+        return output.with_name(f"{safe_filename(benchmark)}{output.suffix}")
     return output.with_name(f"{output.stem}_{safe_filename(benchmark)}{output.suffix}")
+
+
+def metric_dir(output_dir: Path, metric: str) -> Path:
+    return output_dir / safe_filename(metric)
+
+
+def metric_plot(output_dir: Path, metric: str) -> Path:
+    path = metric_dir(output_dir, metric)
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "overview.png"
+
+
+def metric_data(output_dir: Path, metric: str) -> Path:
+    path = metric_dir(output_dir, metric)
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "data.csv"
 
 
 def grouped_mean(df: pd.DataFrame, metric: str, group_by: list[str]) -> pd.DataFrame:
     if df.empty or metric not in df.columns:
         return pd.DataFrame()
-    group_columns = [column for column in ("benchmark", "method") if column in df.columns]
+    group_columns = [column for column in group_by if column in df.columns]
     if not group_columns:
         return pd.DataFrame()
     return (
@@ -639,33 +755,54 @@ def grouped_mean(df: pd.DataFrame, metric: str, group_by: list[str]) -> pd.DataF
 
 
 def plot_bar_by_benchmark(df: pd.DataFrame, metric: str, title: str, output: Path) -> None:
-    plot_df = grouped_mean(df, metric, ["benchmark", "method"])
+    label_columns = [column for column in ("model", "method") if column in df.columns]
+    plot_df = grouped_mean(df, metric, ["benchmark", *label_columns])
     if plot_df.empty:
         return
     plt = ensure_matplotlib()
-    labels = [
-        "\n".join(str(getattr(row, column)) for column in ("benchmark", "method") if hasattr(row, column))
+    overview_label_columns = [column for column in ("benchmark", *label_columns) if column in plot_df.columns]
+    overview_labels = [
+        "\n".join(str(getattr(row, column)) for column in overview_label_columns if hasattr(row, column))
         for row in plot_df.itertuples()
     ]
-    plt.figure(figsize=(max(8, len(labels) * 0.45), 5))
-    plt.bar(labels, plot_df[metric])
+    plt.figure(figsize=(max(10, len(overview_labels) * 0.45), 5))
+    plt.bar(overview_labels, plot_df[metric])
     plt.title(title)
     plt.ylabel(metric)
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output, dpi=180)
     plt.close()
+
+    for benchmark, benchmark_df in plot_df.groupby("benchmark", dropna=False):
+        labels = [
+            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
+            for row in benchmark_df.itertuples()
+        ]
+        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
+        plt.bar(labels, benchmark_df[metric])
+        plt.title(f"{title} - {benchmark}")
+        plt.ylabel(metric)
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        benchmark_path = benchmark_output(output, benchmark)
+        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(benchmark_path, dpi=180)
+        plt.close()
 
 
 def plot_convergence_by_benchmark(df: pd.DataFrame, output: Path) -> None:
     if df.empty or "trajectory" not in df.columns:
         return
     plt = ensure_matplotlib()
-    plt.figure(figsize=(12, 6))
-    group_columns = [column for column in ("benchmark", "method") if column in df.columns]
-    if not group_columns:
+    label_columns = [column for column in ("model", "method") if column in df.columns]
+    if "benchmark" not in df.columns or not label_columns:
         return
-    for group_key, group in df.groupby(group_columns, dropna=False):
+
+    plt.figure(figsize=(14, 7))
+    has_overview_curve = False
+    for group_key, group in df.groupby(["benchmark", *label_columns], dropna=False):
         if not isinstance(group_key, tuple):
             group_key = (group_key,)
         label = "/".join(str(value) for value in group_key)
@@ -685,13 +822,53 @@ def plot_convergence_by_benchmark(df: pd.DataFrame, output: Path) -> None:
             vals = [curve[pos][1] for curve in curves if pos < len(curve)]
             y.append(mean(vals))
         plt.plot(range(len(y)), y, marker="o", label=label)
-    plt.title("Logged Best-Score Convergence")
-    plt.xlabel("Logged step position")
-    plt.ylabel("running best logged score")
-    plt.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1))
-    plt.subplots_adjust(right=0.78)
-    plt.savefig(output, dpi=180, bbox_inches="tight")
+        has_overview_curve = True
+    if has_overview_curve:
+        plt.title("Logged Best-Score Convergence")
+        plt.xlabel("Logged step position")
+        plt.ylabel("running best logged score")
+        plt.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1.02, 1))
+        plt.subplots_adjust(right=0.75)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output, dpi=180, bbox_inches="tight")
     plt.close()
+
+    for benchmark, benchmark_df in df.groupby("benchmark", dropna=False):
+        plt.figure(figsize=(12, 6))
+        has_curve = False
+        for group_key, group in benchmark_df.groupby(label_columns, dropna=False):
+            if not isinstance(group_key, tuple):
+                group_key = (group_key,)
+            label = "/".join(str(value) for value in group_key)
+            curves = []
+            for value in group["trajectory"]:
+                try:
+                    trajectory = json.loads(value)
+                except Exception:
+                    trajectory = []
+                if trajectory:
+                    curves.append(trajectory)
+            if not curves:
+                continue
+            max_len = max(len(curve) for curve in curves)
+            y = []
+            for pos in range(max_len):
+                vals = [curve[pos][1] for curve in curves if pos < len(curve)]
+                y.append(mean(vals))
+            plt.plot(range(len(y)), y, marker="o", label=label)
+            has_curve = True
+        if not has_curve:
+            plt.close()
+            continue
+        plt.title(f"Logged Best-Score Convergence - {benchmark}")
+        plt.xlabel("Logged step position")
+        plt.ylabel("running best logged score")
+        plt.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1))
+        plt.subplots_adjust(right=0.78)
+        benchmark_path = benchmark_output(output, benchmark)
+        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(benchmark_path, dpi=180, bbox_inches="tight")
+        plt.close()
 
 
 def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
@@ -713,6 +890,7 @@ def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
     plt.xlabel("majority agreement")
     plt.ylabel("mean pairwise edit distance")
     plt.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output, dpi=180)
     plt.close()
 
@@ -720,32 +898,52 @@ def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
 def plot_raw_agreement_by_method_and_benchmark(df: pd.DataFrame, output: Path) -> None:
     if df.empty or "method" not in df.columns:
         return
-    group_columns = [column for column in ("benchmark", "method") if column in df.columns]
+    label_columns = [column for column in ("model", "method") if column in df.columns]
+    group_columns = [column for column in ("benchmark", *label_columns) if column in df.columns]
     plot_df = (
         df.dropna(subset=["majority_agreement"])
         .groupby(group_columns, dropna=False)["majority_agreement"]
         .mean()
         .reset_index()
     )
-    if plot_df.empty:
+    if plot_df.empty or "benchmark" not in plot_df.columns:
         return
     plt = ensure_matplotlib()
-    labels = [
-        "\n".join(str(getattr(row, column)) for column in ("benchmark", "method") if hasattr(row, column))
+    overview_label_columns = [column for column in ("benchmark", *label_columns) if column in plot_df.columns]
+    overview_labels = [
+        "\n".join(str(getattr(row, column)) for column in overview_label_columns if hasattr(row, column))
         for row in plot_df.itertuples()
     ]
-    plt.figure(figsize=(max(8, len(labels) * 0.45), 5))
-    plt.bar(labels, plot_df["majority_agreement"])
+    plt.figure(figsize=(max(10, len(overview_labels) * 0.45), 5))
+    plt.bar(overview_labels, plot_df["majority_agreement"])
     plt.title("Raw Call Majority Agreement")
     plt.ylabel("mean majority agreement")
     plt.ylim(0, 1.05)
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output, dpi=180)
     plt.close()
 
+    for benchmark, benchmark_df in plot_df.groupby("benchmark", dropna=False):
+        labels = [
+            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
+            for row in benchmark_df.itertuples()
+        ]
+        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
+        plt.bar(labels, benchmark_df["majority_agreement"])
+        plt.title(f"Raw Call Majority Agreement - {benchmark}")
+        plt.ylabel("mean majority agreement")
+        plt.ylim(0, 1.05)
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        benchmark_path = benchmark_output(output, benchmark)
+        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(benchmark_path, dpi=180)
+        plt.close()
 
-METHOD_GROUP_COLUMNS = ["model", "method"]
+
+METHOD_GROUP_COLUMNS = ["model", "benchmark", "method"]
 
 
 def numeric_sum(series: pd.Series) -> float | None:
@@ -866,6 +1064,39 @@ def aggregate_usage_by_method(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def aggregate_quality_by_method(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
+    for group_key, group in grouped_method_rows(df):
+        row = base_method_row(group_key, group_columns, group)
+        sample_count = numeric_sum(group["sample_count"])
+        solved_count = numeric_sum(group["solved_count"])
+        total_clocktime = numeric_sum(group["total_clocktime"])
+        total_sample_duration = numeric_sum(group["total_sample_duration"])
+        row.update(
+            {
+                "solved_threshold": numeric_mean(group["solved_threshold"]),
+                "sample_count": sample_count,
+                "quality_mean": weighted_mean(group["quality_mean"], group["sample_count"]),
+                "quality_median": numeric_mean(group["quality_median"]),
+                "quality_min": group["quality_min"].dropna().min() if group["quality_min"].notna().any() else None,
+                "quality_max": group["quality_max"].dropna().max() if group["quality_max"].notna().any() else None,
+                "solved_count": solved_count,
+                "solved_rate": safe_ratio(solved_count, sample_count),
+                "total_clocktime": total_clocktime,
+                "total_sample_duration": total_sample_duration,
+                "mean_solution_time": weighted_mean(group["mean_solution_time"], group["sample_count"]),
+                "median_solution_time": numeric_mean(group["median_solution_time"]),
+                "mean_solved_solution_time": weighted_mean(group["mean_solved_solution_time"], group["solved_count"]),
+                "median_solved_solution_time": numeric_mean(group["median_solved_solution_time"]),
+                "clocktime_per_solved": safe_ratio(total_clocktime, solved_count),
+                "sample_time_per_solved": safe_ratio(total_sample_duration, solved_count),
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def aggregate_diversity_by_method(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     group_columns = [column for column in METHOD_GROUP_COLUMNS if column in df.columns]
@@ -945,33 +1176,50 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     diversity = aggregate_diversity_by_method(exploration_diversity(method_logs))
     convergence = aggregate_convergence_by_method(convergence_auc(method_logs))
     usage = aggregate_usage_by_method(usage_metrics(method_logs))
+    quality = aggregate_quality_by_method(quality_solution_metrics(method_logs))
     raw = aggregate_raw_by_method(raw_response_consistency(raw_dir))
 
-    effort.to_csv(output_dir / "effort_to_solution.csv", index=False)
-    diversity.to_csv(output_dir / "exploration_diversity.csv", index=False)
-    convergence.to_csv(output_dir / "convergence_auc.csv", index=False)
-    usage.to_csv(output_dir / "usage_metrics.csv", index=False)
-    raw.to_csv(output_dir / "raw_response_consistency.csv", index=False)
+    effort.to_csv(metric_data(output_dir, "effort_to_solution"), index=False)
+    diversity.to_csv(metric_data(output_dir, "exploration_diversity"), index=False)
+    convergence.to_csv(metric_data(output_dir, "convergence_auc"), index=False)
+    usage.to_csv(metric_data(output_dir, "usage_metrics"), index=False)
+    quality.to_csv(metric_data(output_dir, "quality_solution_metrics"), index=False)
+    raw.to_csv(metric_data(output_dir, "raw_response_consistency"), index=False)
 
     plot_bar_by_benchmark(
         effort,
         "score_per_method_effort",
         "Score per Method Effort",
-        output_dir / "effort_to_solution.png",
+        metric_plot(output_dir, "score_per_method_effort"),
     )
     plot_bar_by_benchmark(
         diversity,
         "normalized_action_entropy",
         "Exploration Diversity",
-        output_dir / "exploration_diversity.png",
+        metric_plot(output_dir, "normalized_action_entropy"),
     )
-    plot_convergence_by_benchmark(convergence, output_dir / "convergence_auc.png")
-    plot_bar_by_benchmark(usage, "calls_total", "Total Calls", output_dir / "calls_total.png")
-    plot_bar_by_benchmark(usage, "total_tokens", "Total Tokens", output_dir / "total_tokens.png")
-    plot_bar_by_benchmark(usage, "total_cost", "Total Cost", output_dir / "total_cost.png")
-    plot_bar_by_benchmark(usage, "score_per_dollar", "Score per Dollar", output_dir / "score_per_dollar.png")
-    plot_raw_consistency(raw, output_dir / "raw_response_consistency.png")
-    plot_raw_agreement_by_method_and_benchmark(raw, output_dir / "raw_majority_agreement.png")
+    plot_convergence_by_benchmark(convergence, metric_plot(output_dir, "convergence_auc"))
+    plot_bar_by_benchmark(usage, "calls_total", "Total Calls", metric_plot(output_dir, "calls_total"))
+    plot_bar_by_benchmark(usage, "total_tokens", "Total Tokens", metric_plot(output_dir, "total_tokens"))
+    plot_bar_by_benchmark(usage, "total_cost", "Total Cost", metric_plot(output_dir, "total_cost"))
+    plot_bar_by_benchmark(usage, "score_per_dollar", "Score per Dollar", metric_plot(output_dir, "score_per_dollar"))
+    plot_bar_by_benchmark(quality, "quality_mean", "Quality Mean", metric_plot(output_dir, "quality_mean"))
+    plot_bar_by_benchmark(quality, "solved_rate", "Solved Rate", metric_plot(output_dir, "solved_rate"))
+    plot_bar_by_benchmark(quality, "mean_solution_time", "Mean Solution Time", metric_plot(output_dir, "mean_solution_time"))
+    plot_bar_by_benchmark(
+        quality,
+        "mean_solved_solution_time",
+        "Mean Solved Solution Time",
+        metric_plot(output_dir, "mean_solved_solution_time"),
+    )
+    plot_bar_by_benchmark(
+        quality,
+        "clocktime_per_solved",
+        "Clocktime per Solved",
+        metric_plot(output_dir, "clocktime_per_solved"),
+    )
+    plot_raw_consistency(raw, metric_plot(output_dir, "raw_response_consistency"))
+    plot_raw_agreement_by_method_and_benchmark(raw, metric_plot(output_dir, "raw_majority_agreement"))
 
 
 def main() -> None:
