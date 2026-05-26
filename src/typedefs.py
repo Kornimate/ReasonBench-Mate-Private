@@ -143,7 +143,7 @@ class Method(ABC):
 
         solve_coroutines = [
             timed(
-                label=f"Idx: {index}",
+                label=index,
                 coroutine=self.solve(
                 idx=index,
                 state=state,
@@ -157,7 +157,10 @@ class Method(ABC):
         
         # Run all solves in parallel
         # Results : [Label, Duration, States]
-        results: List[Tuple[str, float, List[State]]] = await asyncio.gather(*solve_coroutines)
-        results = sorted(results, key=lambda x: x[0])
+        results: List[Tuple[Any, float, List[State]]] = await asyncio.gather(*solve_coroutines)
         labels, durations, states = zip(*results)
+        self.sample_timings = [
+            {"idx": label, "duration": duration}
+            for label, duration in zip(labels, durations)
+        ]
         return durations, states

@@ -110,11 +110,13 @@ async def run(args, trial, cache_path):
 
     # Final logging
     evaluations = [sorted([environment.evaluate(state) for state in r], key=lambda x: x[1]) for r in results]
-    final_logging(logger, api, clocktime, durations, evaluations)
+    final_logging(logger, api, clocktime, durations, evaluations, getattr(method, "sample_timings", None))
 
+    sample_timings = getattr(method, "sample_timings", [])
     for sample_idx, sample_evaluations in enumerate(evaluations):
+        sample_id = sample_timings[sample_idx]["idx"] if sample_idx < len(sample_timings) else sample_idx
         solved, score = sample_evaluations[-1]
-        print(f"Sample {sample_idx}: solved={solved} score={score:.6f}")
+        print(f"Sample {sample_id}: solved={solved} score={score:.6f}")
 
 
 

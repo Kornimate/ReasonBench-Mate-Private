@@ -59,6 +59,10 @@ DURATIONS_PATTERN = re.compile(
     r"Duration:.*?Individual durations of each sample \(in seconds\):\s*(?P<values>\[.*?\])",
     re.DOTALL,
 )
+SAMPLE_TIMINGS_PATTERN = re.compile(
+    r"Individual sample timings:\s*(?P<values>\[.*?\])",
+    re.DOTALL,
+)
 QUALITY_CORRECT_PATTERN = re.compile(r"Quality:.*?Correct:\s*(?P<values>\[.*?\])", re.DOTALL)
 USAGE_PATTERN = re.compile(
     r"^(?P<kind>Calls|Tokens|Cost) "
@@ -111,6 +115,7 @@ class MethodLog:
     total_cost_saved_by_deduplicator: float | None = None
     total_clocktime: float | None = None
     sample_durations: list[float] = field(default_factory=list)
+    sample_timings: list[dict[str, Any]] = field(default_factory=list)
     quality_scores: list[float] = field(default_factory=list)
 
 
@@ -137,6 +142,37 @@ def parse_float_list(value: str) -> list[float]:
     if not isinstance(parsed, list):
         return []
     return [float(item) for item in parsed if isinstance(item, (int, float))]
+
+
+def parse_sample_timings(value: str) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        try:
+            parsed = ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            return []
+
+    if not isinstance(parsed, list):
+        return []
+
+    timings = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        idx = item.get("idx")
+        duration = as_float(item.get("duration"))
+        if duration is None:
+            continue
+        row = {"idx": idx, "duration": duration}
+        score = as_float(item.get("score"))
+        if score is not None:
+            row["score"] = score
+        solved = item.get("solved")
+        if isinstance(solved, bool):
+            row["solved"] = solved
+        timings.append(row)
+    return timings
 
 
 def set_usage_metric(parsed: MethodLog, kind: str, scope: str, value: str) -> None:
@@ -233,6 +269,12 @@ def parse_method_log(path: Path) -> MethodLog:
     durations_match = DURATIONS_PATTERN.search(cleaned_text)
     if durations_match:
         parsed.sample_durations = parse_float_list(durations_match.group("values"))
+
+    sample_timings_match = SAMPLE_TIMINGS_PATTERN.search(cleaned_text)
+    if sample_timings_match:
+        parsed.sample_timings = parse_sample_timings(sample_timings_match.group("values"))
+        if parsed.sample_timings:
+            parsed.sample_durations = [row["duration"] for row in parsed.sample_timings]
 
     quality_match = QUALITY_CORRECT_PATTERN.search(cleaned_text)
     if quality_match:
@@ -474,11 +516,22 @@ def quality_solution_metrics(logs: list[MethodLog]) -> pd.DataFrame:
             continue
 
         threshold = solved_threshold(log.benchmark)
-        solved_flags = [score >= threshold for score in log.quality_scores]
+        if log.sample_timings and all("score" in timing for timing in log.sample_timings):
+            timing_scores = [float(timing["score"]) for timing in log.sample_timings]
+            solved_flags = [bool(timing.get("solved", score >= threshold)) for timing, score in zip(log.sample_timings, timing_scores)]
+            solved_durations = [
+                float(timing["duration"])
+                for timing, solved in zip(log.sample_timings, solved_flags)
+                if solved
+            ]
+            score_values = timing_scores
+        else:
+            solved_flags = [score >= threshold for score in log.quality_scores]
+            paired_durations = list(zip(log.sample_durations, solved_flags))
+            solved_durations = [duration for duration, solved in paired_durations if solved]
+            score_values = log.quality_scores
         solved_count = sum(solved_flags)
-        sample_count = max(len(log.quality_scores), len(log.sample_durations))
-        paired_durations = list(zip(log.sample_durations, solved_flags))
-        solved_durations = [duration for duration, solved in paired_durations if solved]
+        sample_count = max(len(log.quality_scores), len(log.sample_durations), len(log.sample_timings))
         total_sample_duration = sum(log.sample_durations) if log.sample_durations else None
 
         rows.append(
@@ -490,12 +543,12 @@ def quality_solution_metrics(logs: list[MethodLog]) -> pd.DataFrame:
                 "repeat": log.repeat,
                 "solved_threshold": threshold,
                 "sample_count": sample_count or None,
-                "quality_mean": mean(log.quality_scores) if log.quality_scores else None,
-                "quality_median": median(log.quality_scores) if log.quality_scores else None,
-                "quality_min": min(log.quality_scores) if log.quality_scores else None,
-                "quality_max": max(log.quality_scores) if log.quality_scores else None,
-                "solved_count": solved_count if log.quality_scores else None,
-                "solved_rate": safe_ratio(solved_count, len(log.quality_scores)),
+                "quality_mean": mean(score_values) if score_values else None,
+                "quality_median": median(score_values) if score_values else None,
+                "quality_min": min(score_values) if score_values else None,
+                "quality_max": max(score_values) if score_values else None,
+                "solved_count": solved_count if score_values else None,
+                "solved_rate": safe_ratio(solved_count, len(score_values)),
                 "total_clocktime": log.total_clocktime,
                 "total_sample_duration": total_sample_duration,
                 "mean_solution_time": mean(log.sample_durations) if log.sample_durations else None,
@@ -512,9 +565,32 @@ def quality_solution_metrics(logs: list[MethodLog]) -> pd.DataFrame:
 def quality_sample_metrics(logs: list[MethodLog]) -> pd.DataFrame:
     rows = []
     for log in logs:
-        if not log.quality_scores:
+        if not log.quality_scores and not log.sample_timings:
             continue
         threshold = solved_threshold(log.benchmark)
+        if log.sample_timings:
+            for sample_index, timing in enumerate(log.sample_timings):
+                score = timing.get("score")
+                solved = timing.get("solved")
+                if score is None and sample_index < len(log.quality_scores):
+                    score = log.quality_scores[sample_index]
+                if score is None:
+                    continue
+                rows.append(
+                    {
+                        "model": log.model,
+                        "benchmark": log.benchmark,
+                        "method": log.method,
+                        "split": log.split,
+                        "repeat": log.repeat,
+                        "sample": timing.get("idx", sample_index + 1),
+                        "score": score,
+                        "duration": timing.get("duration"),
+                        "solved_threshold": threshold,
+                        "solved": float(bool(solved) if isinstance(solved, bool) else score >= threshold),
+                    }
+                )
+            continue
         for sample_index, score in enumerate(log.quality_scores):
             duration = log.sample_durations[sample_index] if sample_index < len(log.sample_durations) else None
             rows.append(

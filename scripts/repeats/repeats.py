@@ -125,7 +125,7 @@ async def run(args, cache_path):
 
         # Final logging
         evaluations = [sorted([environment.evaluate(state) for state in r], key=lambda x: x[1]) for r in results]
-        final_logging(logger, api, clocktime, durations, evaluations)
+        final_logging(logger, api, clocktime, durations, evaluations, getattr(method, "sample_timings", None))
 
         
 

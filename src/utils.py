@@ -3,6 +3,7 @@ import re
 import time
 import random
 import logging
+import json
 
 import numpy as np 
 import pandas as pd
@@ -375,7 +376,8 @@ def final_logging(
         api: "src.models.API", 
         clocktime: float, 
         durations: List[float], 
-        evaluations: List[Any]
+        evaluations: List[Any],
+        sample_timings: List[dict[str, Any]] | None = None,
         ):
 
 
@@ -447,6 +449,16 @@ def final_logging(
     logger.info("Duration:")
     logger.info("\tTotal clocktime (in seconds): %f", clocktime)
     logger.info("\tIndividual durations of each sample (in seconds): %s\n", list(durations))
+    if sample_timings:
+        enriched_timings = []
+        for sample_index, timing in enumerate(sample_timings):
+            row = dict(timing)
+            if sample_index < len(evaluations) and evaluations[sample_index]:
+                solved, score = evaluations[sample_index][-1]
+                row["solved"] = bool(solved)
+                row["score"] = float(score)
+            enriched_timings.append(row)
+        logger.info("\tIndividual sample timings: %s\n", json.dumps(enriched_timings))
 
     # Quality information
     correct = [max(agent_result[1] for agent_result in e) for e in evaluations]
