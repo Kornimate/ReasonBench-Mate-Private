@@ -12,8 +12,8 @@ This file records whether higher or lower values are better when comparing metho
 | `total_cost` | Lower | Lower total API cost. |
 | `score_per_dollar` | Higher | More score per USD. |
 | `cost_per_solved` | Lower | Lower API cost for each solved sample. |
-| `solved_per_dollar` | Higher | More solved samples per USD. |
-| `solved_rate_per_dollar` | Higher | More solved-rate per USD spent. |
+| `solved_cost_ratio` | Higher | Raw ratio: solved samples divided by total cost. |
+| `solved_rate_cost_ratio` | Higher | Raw ratio: solved rate divided by total cost. |
 | `cost_per_solved_rate_point` | Lower | Lower API cost for each solved-rate point. |
 | `quality_mean` | Higher | Better average quality score. |
 | `solved_rate` | Higher | Larger fraction of solved samples. |

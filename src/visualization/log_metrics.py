@@ -27,9 +27,9 @@ from .log_utils import raw_majority_agreement as raw_majority_agreement_metric
 from .log_utils import raw_response_consistency as raw_response_consistency_metric
 from .log_utils import score_per_dollar as score_per_dollar_metric
 from .log_utils import score_per_method_effort as score_per_method_effort_metric
-from .log_utils import solved_per_dollar as solved_per_dollar_metric
+from .log_utils import solved_cost_ratio as solved_cost_ratio_metric
 from .log_utils import solved_rate as solved_rate_metric
-from .log_utils import solved_rate_per_dollar as solved_rate_per_dollar_metric
+from .log_utils import solved_rate_cost_ratio as solved_rate_cost_ratio_metric
 from .log_utils import total_cost as total_cost_metric
 from .log_utils import total_tokens as total_tokens_metric
 from .log_utils.log_metric_common import metric_data
@@ -747,6 +747,13 @@ def raw_response_consistency(raw_dir: Path) -> pd.DataFrame:
 
 
 METHOD_GROUP_COLUMNS = ["model", "benchmark", "method"]
+EXCLUDED_METRIC_METHODS = {"io"}
+
+
+def exclude_metric_methods(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "method" not in df.columns:
+        return df
+    return df[~df["method"].astype(str).isin(EXCLUDED_METRIC_METHODS)].copy()
 
 
 def numeric_sum(series: pd.Series) -> float | None:
@@ -997,10 +1004,10 @@ def aggregate_solved_cost_by_method(quality: pd.DataFrame, usage: pd.DataFrame) 
     merged["cost_per_solved"] = [
         safe_ratio(cost, solved) for cost, solved in zip(merged.get("total_cost"), merged.get("solved_count"))
     ]
-    merged["solved_per_dollar"] = [
+    merged["solved_cost_ratio"] = [
         safe_ratio(solved, cost) for solved, cost in zip(merged.get("solved_count"), merged.get("total_cost"))
     ]
-    merged["solved_rate_per_dollar"] = [
+    merged["solved_rate_cost_ratio"] = [
         safe_ratio(rate, cost) for rate, cost in zip(merged.get("solved_rate"), merged.get("total_cost"))
     ]
     merged["cost_per_solved_rate_point"] = [
@@ -1018,9 +1025,17 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     convergence = aggregate_convergence_by_method(convergence_auc(method_logs))
     usage = aggregate_usage_by_method(usage_metrics(method_logs))
     quality = aggregate_quality_by_method(quality_solution_metrics(method_logs))
-    solved_cost = aggregate_solved_cost_by_method(quality, usage)
     quality_samples = quality_sample_metrics(method_logs)
     raw = aggregate_raw_by_method(raw_response_consistency(raw_dir))
+
+    effort = exclude_metric_methods(effort)
+    diversity = exclude_metric_methods(diversity)
+    convergence = exclude_metric_methods(convergence)
+    usage = exclude_metric_methods(usage)
+    quality = exclude_metric_methods(quality)
+    quality_samples = exclude_metric_methods(quality_samples)
+    raw = exclude_metric_methods(raw)
+    solved_cost = aggregate_solved_cost_by_method(quality, usage)
 
     effort.to_csv(metric_data(output_dir, "effort_to_solution"), index=False)
     diversity.to_csv(metric_data(output_dir, "exploration_diversity"), index=False)
@@ -1038,15 +1053,15 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     # total_tokens_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
     # total_cost_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
     score_per_dollar_metric.write(usage, output_dir)
-    # cost_per_solved_metric.write(solved_cost, output_dir)  # filtered: neither highlighted method is best for this metric
-    solved_per_dollar_metric.write(solved_cost, output_dir)
-    solved_rate_per_dollar_metric.write(solved_cost, output_dir)
-    # cost_per_solved_rate_point_metric.write(solved_cost, output_dir)  # filtered: neither highlighted method is best for this metric
+    cost_per_solved_metric.write(solved_cost, output_dir)
+    solved_cost_ratio_metric.write(solved_cost, output_dir)
+    solved_rate_cost_ratio_metric.write(solved_cost, output_dir)
+    cost_per_solved_rate_point_metric.write(solved_cost, output_dir)
     quality_mean_metric.write(quality, output_dir)
     solved_rate_metric.write(quality, output_dir)
     # mean_solution_time_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
-    # mean_solved_solution_time_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
-    # clocktime_per_solved_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
+    mean_solved_solution_time_metric.write(quality, output_dir)
+    clocktime_per_solved_metric.write(quality, output_dir)
     methods_heatmap_metric.write(quality_samples, output_dir)
     raw_response_consistency_metric.write(raw, output_dir)
     # raw_majority_agreement_metric.write(raw, output_dir)  # filtered: neither highlighted method is best for this metric
