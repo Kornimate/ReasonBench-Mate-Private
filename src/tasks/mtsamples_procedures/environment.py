@@ -18,7 +18,7 @@ from ...typedefs import Environment, MAX_SEED, Request
 cache = Cache(".cache/mtsamples_procedures_jury_cache")
 
 MAX_LIKERT_SCORE = 5.0 # based on MTSamplesProcedures evaluation criteria
-FINAL_SCORE_THRESHOLD = 3.8
+FINAL_SCORE_THRESHOLD = 3.5
 DEFAULT_JURY_SCORE = 1.0
 
 # parsing llm response for jury evaluation, introduced robostusess with possible variations of response formatting
