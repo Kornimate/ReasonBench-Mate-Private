@@ -748,12 +748,23 @@ def raw_response_consistency(raw_dir: Path) -> pd.DataFrame:
 
 METHOD_GROUP_COLUMNS = ["model", "benchmark", "method"]
 EXCLUDED_METRIC_METHODS = {"io"}
+EXCLUDED_METRIC_BENCHMARKS = {"matharena"}
 
 
 def exclude_metric_methods(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "method" not in df.columns:
         return df
     return df[~df["method"].astype(str).isin(EXCLUDED_METRIC_METHODS)].copy()
+
+
+def exclude_metric_benchmarks(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "benchmark" not in df.columns:
+        return df
+    return df[~df["benchmark"].astype(str).isin(EXCLUDED_METRIC_BENCHMARKS)].copy()
+
+
+def filter_metric_scope(df: pd.DataFrame) -> pd.DataFrame:
+    return exclude_metric_benchmarks(exclude_metric_methods(df))
 
 
 def numeric_sum(series: pd.Series) -> float | None:
@@ -1028,13 +1039,13 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     quality_samples = quality_sample_metrics(method_logs)
     raw = aggregate_raw_by_method(raw_response_consistency(raw_dir))
 
-    effort = exclude_metric_methods(effort)
-    diversity = exclude_metric_methods(diversity)
-    convergence = exclude_metric_methods(convergence)
-    usage = exclude_metric_methods(usage)
-    quality = exclude_metric_methods(quality)
-    quality_samples = exclude_metric_methods(quality_samples)
-    raw = exclude_metric_methods(raw)
+    effort = filter_metric_scope(effort)
+    diversity = filter_metric_scope(diversity)
+    convergence = filter_metric_scope(convergence)
+    usage = filter_metric_scope(usage)
+    quality = filter_metric_scope(quality)
+    quality_samples = filter_metric_scope(quality_samples)
+    raw = filter_metric_scope(raw)
     solved_cost = aggregate_solved_cost_by_method(quality, usage)
 
     effort.to_csv(metric_data(output_dir, "effort_to_solution"), index=False)
