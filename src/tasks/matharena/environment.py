@@ -86,18 +86,47 @@ def normalize_action(action: str) -> str:
 
 def extract_final_answer(text: str) -> str | None:
     text = str(text or "").strip()
-    patterns = [
-        r"Finish\[(.*?)\]\s*$",
-        r"Final Answer\s*:\s*(.*)$",
-        r"final answer is\s*(.*)$",
-        r"answer is\s*(.*)$",
-        r"Answer\s*:\s*(.*)$",
-        r"\\boxed\{([^{}]+)\}",
+
+    finish_match = re.search(r"Finish\[(.*)\]\s*$", text, flags=re.IGNORECASE | re.DOTALL)
+    if finish_match:
+        finish = finish_match.group(1)
+        nested = extract_final_answer(finish)
+        return nested if nested is not None else clean_answer(finish)
+
+    boxed = _extract_last_boxed(text)
+    if boxed is not None:
+        return clean_answer(boxed)
+
+    line_patterns = [
+        r"(?:final\s+answer|answer)\s*(?:is|:)\s*([^\n\r]*)",
     ]
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            return clean_answer(match.group(1))
+    for pattern in line_patterns:
+        matches = re.findall(pattern, text, flags=re.IGNORECASE)
+        if matches:
+            candidate = clean_answer(matches[-1])
+            nested = _extract_last_boxed(candidate)
+            return clean_answer(nested if nested is not None else candidate)
+    return None
+
+
+def _extract_last_boxed(text: str) -> str | None:
+    marker = r"\boxed{"
+    starts = [match.start() for match in re.finditer(re.escape(marker), text)]
+    for start in reversed(starts):
+        content_start = start + len(marker)
+        depth = 1
+        pos = content_start
+        while pos < len(text):
+            char = text[pos]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    content = text[content_start:pos]
+                    nested = _extract_last_boxed(content)
+                    return nested if nested is not None else content
+            pos += 1
     return None
 
 

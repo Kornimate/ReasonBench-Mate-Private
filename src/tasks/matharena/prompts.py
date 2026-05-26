@@ -1,13 +1,12 @@
 # Step-by-step analysis prompt
 act = '''Given a math problem, analyze it step by step. Each step should either analyze the problem, explain concepts, or provide the final answer.
+Return exactly one action. Put the full useful content inside the brackets.
 
 Example Problem: Find the area of a circle with radius 5cm.
-Step: Analyze[problem]
-The problem asks for the area of a circle given its radius of 5cm.
+Step: Analyze[The problem asks for the area of a circle given its radius of 5cm.]
 
 Example Problem: Solve the equation 2x + 4 = 12
-Step: Analyze[solution approach]
-We need to isolate x by subtracting 4 from both sides and then dividing by 2.
+Step: Analyze[We need to isolate x by subtracting 4 from both sides and then dividing by 2.]
 
 Input Problem: {input}
 Next step:
@@ -42,22 +41,22 @@ Finish[3]
 Input Problem: {input}
 '''
 
-# Evaluation prompt
-evaluate = '''Evaluate if the given math problem can be solved using the available information. Respond with: "solvable", "needs more info", or "impossible".
+evaluate = '''Evaluate the current partial solution to the math problem. Respond with a numeric score from 0 to 1, where 0 means the partial solution is useless or repetitive, 0.5 means it is somewhat relevant but incomplete, and 1 means it makes strong progress toward the final answer.
 
 Example Problem: Find x if 2x = 10
-All information is present and equation can be solved
-solvable
+Partial solution:
+Analyze[Subtracting 2 from both sides solves it.]
+Score: 0
 
-Example Problem: Find the area of a triangle
-Missing base and height measurements
-needs more info
-
-Example Problem: Solve √(x+1) = -5
-No real solution exists since square root cannot be negative
-impossible
+Example Problem: Find x if 2x = 10
+Partial solution:
+Explain[Divide both sides by 2 to get x = 5.]
+Score: 1
 
 Input Problem: {input}
+Partial solution:
+{steps}
+Score:
 '''
 
 # Solution verification prompt

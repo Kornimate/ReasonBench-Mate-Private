@@ -10,6 +10,18 @@ from ...utils import build_population_prediction_prompt, parse_population_predic
 
 
 ACTION_PATTERN = re.compile(r"(Analyze|Explain|Finish)\[(.*?)\]", re.IGNORECASE | re.DOTALL)
+GENERIC_ACTION_CONTENT = {
+    "analysis",
+    "concept",
+    "concepts",
+    "math concepts",
+    "problem",
+    "problem statement",
+    "solution approach",
+    "solution steps",
+    "underlying problem structure",
+    "underlying structure",
+}
 
 
 @AgentFactory.register
@@ -195,6 +207,7 @@ class AgentEvaluateMathArena(Agent):
             responses = await model.request(
                 prompt=prompts.evaluate.format(
                     input=state.problem,
+                    steps=format_steps(state),
                 ),
                 n=n,
                 request_id=request_id,
@@ -256,7 +269,7 @@ def format_steps(state: StateMathArena) -> str:
 
 
 def parse_actions(response: str) -> List[str]:
-    actions = [format_action(kind, content) for kind, content in ACTION_PATTERN.findall(response)]
+    actions = parse_actions_no_fallback(response)
     if actions:
         return actions
 
@@ -266,9 +279,13 @@ def parse_actions(response: str) -> List[str]:
 
 
 def parse_single_action(response: str) -> str:
+    response = str(response)
     actions = parse_actions_no_fallback(response)
     if actions:
-        return actions[-1] if actions[-1].startswith("Finish[") else actions[0]
+        finish_actions = [action for action in actions if action.startswith("Finish[")]
+        if finish_actions:
+            return finish_actions[-1]
+        return actions[0]
 
     final = extract_final_answer(response)
     if final is not None:
@@ -281,7 +298,20 @@ def parse_single_action(response: str) -> str:
 
 
 def parse_actions_no_fallback(response: str) -> List[str]:
-    return [format_action(kind, content) for kind, content in ACTION_PATTERN.findall(str(response))]
+    response = str(response)
+    matches = list(ACTION_PATTERN.finditer(response))
+    actions = []
+    for index, match in enumerate(matches):
+        kind = match.group(1)
+        content = clean_answer(match.group(2))
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(response)
+        trailing = clean_answer(response[match.end():end])
+        if content.lower() in GENERIC_ACTION_CONTENT and trailing:
+            content = trailing
+        elif trailing:
+            content = f"{content} {trailing}"
+        actions.append(format_action(kind, content))
+    return actions
 
 
 def format_action(kind: str, content: str) -> str:
