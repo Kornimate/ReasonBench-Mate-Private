@@ -664,6 +664,42 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
     return paths
 
 
+def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Create one standalone plot per benchmark/metric, with all methods shown."""
+    output_dir = plots_dir / "per_benchmark_all_methods"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    metrics = [
+        ("normalized_quality", "Normalized Quality"),
+        ("solved_rate", "Solved Rate"),
+        ("total_cost", "Total Cost"),
+        ("total_calls", "Total Calls"),
+    ]
+    for model, model_part in benchmark.groupby("model", dropna=False):
+        methods = sorted(model_part["method"].unique())
+        for bench_name, bench_part in model_part.groupby("benchmark", dropna=False):
+            values = bench_part.set_index("method").reindex(methods).reset_index()
+            attempts = values["attempted_instances"].dropna()
+            attempts_label = f"n={int(attempts.iloc[0])}" if not attempts.empty else "n=unknown"
+            for metric, title in metrics:
+                ordered = values.sort_values(metric, ascending=False, na_position="last")
+                fig, ax = plt.subplots(figsize=(11, 5.8), constrained_layout=True)
+                ax.bar(ordered["method"], ordered[metric])
+                ax.set_title(f"{title} by Method - {bench_name} - {model} ({attempts_label})")
+                ax.set_xlabel("Method")
+                ax.tick_params(axis="x", rotation=45)
+                _format_axis(ax, metric)
+                for idx, value in enumerate(ordered[metric]):
+                    if pd.notna(value):
+                        label = f"{int(value):,}" if metric == "total_calls" else f"{value:,.4f}"
+                        ax.text(idx, value, label, ha="center", va="bottom", fontsize=8)
+                path = output_dir / f"{_slug(model)}_{_slug(bench_name)}_{metric}.png"
+                fig.savefig(path, dpi=180)
+                plt.close(fig)
+                paths.append(path)
+    return paths
+
+
 def generate_plots(
     output_dir: Path,
     benchmark: pd.DataFrame,
@@ -681,6 +717,7 @@ def generate_plots(
     paths.extend(plot_focus_per_benchmark(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_focus_dashboard(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))
+    paths.extend(plot_all_method_benchmark_metric_plots(benchmark, plots_dir))
     return paths, difficulty
 
 def print_results(summary: pd.DataFrame, bootstrap: pd.DataFrame) -> None:
