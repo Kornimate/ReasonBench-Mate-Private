@@ -13,6 +13,27 @@ from omegaconf import OmegaConf
 
 import pandas as pd
 
+from .log_utils import calls_total as calls_total_metric
+from .log_utils import clocktime_per_solved as clocktime_per_solved_metric
+from .log_utils import convergence_auc as convergence_auc_metric
+from .log_utils import cost_per_solved as cost_per_solved_metric
+from .log_utils import cost_per_solved_rate_point as cost_per_solved_rate_point_metric
+from .log_utils import mean_solution_time as mean_solution_time_metric
+from .log_utils import mean_solved_solution_time as mean_solved_solution_time_metric
+from .log_utils import methods_heatmap as methods_heatmap_metric
+from .log_utils import normalized_action_entropy as normalized_action_entropy_metric
+from .log_utils import quality_mean as quality_mean_metric
+from .log_utils import raw_majority_agreement as raw_majority_agreement_metric
+from .log_utils import raw_response_consistency as raw_response_consistency_metric
+from .log_utils import score_per_dollar as score_per_dollar_metric
+from .log_utils import score_per_method_effort as score_per_method_effort_metric
+from .log_utils import solved_per_dollar as solved_per_dollar_metric
+from .log_utils import solved_rate as solved_rate_metric
+from .log_utils import solved_rate_per_dollar as solved_rate_per_dollar_metric
+from .log_utils import total_cost as total_cost_metric
+from .log_utils import total_tokens as total_tokens_metric
+from .log_utils.log_metric_common import metric_data
+
 
 METHOD_TITLES = {
     "IO Method Information:",
@@ -57,29 +78,6 @@ SOLVED_THRESHOLDS = {
     "scibench": 1.0,
     "sonnetwriting": 1.0,
 }
-
-HIGHLIGHT_METHOD_COLORS = {
-    "heterogeneous_foa": "#d55e00",
-    "heterogeneus_foa": "#d55e00",
-    "reagents": "#0072b2",
-}
-DEFAULT_BAR_COLOR = "#8a8a8a"
-
-METRIC_AXIS_LABELS = {
-    "score_per_method_effort": "score per method effort",
-    "normalized_action_entropy": "normalized entropy (0-1)",
-    "calls_total": "calls (instances)",
-    "total_tokens": "tokens",
-    "total_cost": "cost (USD)",
-    "score_per_dollar": "score per USD",
-    "quality_mean": "quality score",
-    "solved_rate": "solved rate (0-1)",
-    "mean_solution_time": "mean solution time (seconds)",
-    "mean_solved_solution_time": "mean solved solution time (seconds)",
-    "clocktime_per_solved": "clocktime per solved sample (seconds)",
-    "majority_agreement": "mean majority agreement (0-1)",
-}
-
 
 @dataclass
 class MethodLog:
@@ -748,395 +746,6 @@ def raw_response_consistency(raw_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def ensure_matplotlib():
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError as exc:
-        raise SystemExit("matplotlib is required for plotting. Install it with `pip install matplotlib`.") from exc
-    return plt
-
-
-def safe_filename(value: Any) -> str:
-    text = "unknown" if value is None or pd.isna(value) else str(value)
-    text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text.strip())
-    return text.strip("_") or "unknown"
-
-
-def benchmark_output(output: Path, benchmark: Any) -> Path:
-    if output.name == "overview.png":
-        return output.with_name(f"{safe_filename(benchmark)}{output.suffix}")
-    return output.with_name(f"{output.stem}_{safe_filename(benchmark)}{output.suffix}")
-
-
-def metric_dir(output_dir: Path, metric: str) -> Path:
-    return output_dir / safe_filename(metric)
-
-
-def metric_plot(output_dir: Path, metric: str) -> Path:
-    path = metric_dir(output_dir, metric)
-    path.mkdir(parents=True, exist_ok=True)
-    return path / "overview.png"
-
-
-def metric_data(output_dir: Path, metric: str) -> Path:
-    path = metric_dir(output_dir, metric)
-    path.mkdir(parents=True, exist_ok=True)
-    return path / "data.csv"
-
-
-def subplot_grid_size(count: int) -> tuple[int, int]:
-    columns = 4 if count > 3 else max(1, count)
-    rows = math.ceil(count / columns)
-    return rows, columns
-
-
-def a4_landscape_size(rows: int) -> tuple[float, float]:
-    return 11.69, max(8.27, rows * 2.6)
-
-
-def bar_color(method: Any) -> str:
-    return HIGHLIGHT_METHOD_COLORS.get(str(method), DEFAULT_BAR_COLOR)
-
-
-def bar_colors(df: pd.DataFrame) -> list[str]:
-    if "method" not in df.columns:
-        return [DEFAULT_BAR_COLOR] * len(df)
-    return [bar_color(method) for method in df["method"]]
-
-
-def metric_axis_label(metric: str) -> str:
-    return METRIC_AXIS_LABELS.get(metric, metric.replace("_", " "))
-
-
-def add_method_highlight_legend(axis, df: pd.DataFrame) -> None:
-    if "method" not in df.columns:
-        return
-    present = [method for method in ("heterogeneous_foa", "reagents") if method in set(df["method"].astype(str))]
-    if not present:
-        return
-    from matplotlib.patches import Patch
-
-    handles = [Patch(color=HIGHLIGHT_METHOD_COLORS[method], label=method) for method in present]
-    axis.legend(handles=handles, fontsize=6, loc="best")
-
-
-def benchmark_groups(df: pd.DataFrame):
-    return list(df.groupby("benchmark", dropna=False))
-
-
-def grouped_mean(df: pd.DataFrame, metric: str, group_by: list[str]) -> pd.DataFrame:
-    if df.empty or metric not in df.columns:
-        return pd.DataFrame()
-    group_columns = [column for column in group_by if column in df.columns]
-    if not group_columns:
-        return pd.DataFrame()
-    return (
-        df.dropna(subset=[metric])
-        .groupby(group_columns, dropna=False)[metric]
-        .mean()
-        .reset_index()
-    )
-
-
-def plot_bar_by_benchmark(df: pd.DataFrame, metric: str, title: str, output: Path) -> None:
-    label_columns = [column for column in ("method",) if column in df.columns]
-    plot_df = grouped_mean(df, metric, ["benchmark", *label_columns])
-    if plot_df.empty:
-        return
-    plt = ensure_matplotlib()
-    y_label = metric_axis_label(metric)
-    groups = benchmark_groups(plot_df)
-    rows, columns = subplot_grid_size(len(groups))
-    fig, axes = plt.subplots(rows, columns, figsize=a4_landscape_size(rows), squeeze=False)
-    for axis, (benchmark, benchmark_df) in zip(axes.flat, groups):
-        labels = [
-            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
-            for row in benchmark_df.itertuples()
-        ]
-        axis.bar(labels, benchmark_df[metric], color=bar_colors(benchmark_df))
-        axis.set_title(str(benchmark), fontsize=9)
-        axis.tick_params(axis="x", labelrotation=45, labelsize=7)
-        axis.tick_params(axis="y", labelsize=7)
-        axis.set_ylabel(y_label, fontsize=8)
-        add_method_highlight_legend(axis, benchmark_df)
-    for axis in list(axes.flat)[len(groups):]:
-        axis.axis("off")
-    fig.suptitle(title, fontsize=13)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=180)
-    plt.close(fig)
-
-    for benchmark, benchmark_df in groups:
-        labels = [
-            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
-            for row in benchmark_df.itertuples()
-        ]
-        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
-        plt.bar(labels, benchmark_df[metric], color=bar_colors(benchmark_df))
-        add_method_highlight_legend(plt.gca(), benchmark_df)
-        plt.title(f"{title} - {benchmark}")
-        plt.ylabel(y_label)
-        plt.xticks(rotation=45, ha="right")
-        plt.tight_layout()
-        benchmark_path = benchmark_output(output, benchmark)
-        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(benchmark_path, dpi=180)
-        plt.close()
-
-
-def plot_convergence_by_benchmark(df: pd.DataFrame, output: Path) -> None:
-    if df.empty or "trajectory" not in df.columns:
-        return
-    plt = ensure_matplotlib()
-    label_columns = [column for column in ("method",) if column in df.columns]
-    if "benchmark" not in df.columns or not label_columns:
-        return
-
-    groups = benchmark_groups(df)
-    rows, columns = subplot_grid_size(len(groups))
-    fig, axes = plt.subplots(rows, columns, figsize=a4_landscape_size(rows), squeeze=False)
-    has_overview_curve = False
-    for axis, (benchmark, benchmark_df) in zip(axes.flat, groups):
-        has_curve = False
-        for group_key, group in benchmark_df.groupby(label_columns, dropna=False):
-            if not isinstance(group_key, tuple):
-                group_key = (group_key,)
-            label = "/".join(str(value) for value in group_key)
-            curves = []
-            for value in group["trajectory"]:
-                try:
-                    trajectory = json.loads(value)
-                except Exception:
-                    trajectory = []
-                if trajectory:
-                    curves.append(trajectory)
-            if not curves:
-                continue
-            max_len = max(len(curve) for curve in curves)
-            y = []
-            for pos in range(max_len):
-                vals = [curve[pos][1] for curve in curves if pos < len(curve)]
-                y.append(mean(vals))
-            axis.plot(range(len(y)), y, marker="o", markersize=2, linewidth=1, label=label)
-            has_curve = True
-            has_overview_curve = True
-        axis.set_title(str(benchmark), fontsize=9)
-        axis.set_xlabel("logged step position (index)", fontsize=8)
-        axis.set_ylabel("running best score", fontsize=8)
-        axis.tick_params(labelsize=7)
-        if has_curve:
-            axis.legend(fontsize=5, loc="best")
-    for axis in list(axes.flat)[len(groups):]:
-        axis.axis("off")
-    if has_overview_curve:
-        fig.suptitle("Logged Best-Score Convergence", fontsize=13)
-        fig.tight_layout(rect=(0, 0, 1, 0.96))
-        output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=180)
-    plt.close(fig)
-
-    for benchmark, benchmark_df in groups:
-        plt.figure(figsize=(12, 6))
-        has_curve = False
-        for group_key, group in benchmark_df.groupby(label_columns, dropna=False):
-            if not isinstance(group_key, tuple):
-                group_key = (group_key,)
-            label = "/".join(str(value) for value in group_key)
-            curves = []
-            for value in group["trajectory"]:
-                try:
-                    trajectory = json.loads(value)
-                except Exception:
-                    trajectory = []
-                if trajectory:
-                    curves.append(trajectory)
-            if not curves:
-                continue
-            max_len = max(len(curve) for curve in curves)
-            y = []
-            for pos in range(max_len):
-                vals = [curve[pos][1] for curve in curves if pos < len(curve)]
-                y.append(mean(vals))
-            plt.plot(range(len(y)), y, marker="o", label=label)
-            has_curve = True
-        if not has_curve:
-            plt.close()
-            continue
-        plt.title(f"Logged Best-Score Convergence - {benchmark}")
-        plt.xlabel("Logged step position (index)")
-        plt.ylabel("Running best logged score")
-        plt.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1))
-        plt.subplots_adjust(right=0.78)
-        benchmark_path = benchmark_output(output, benchmark)
-        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(benchmark_path, dpi=180, bbox_inches="tight")
-        plt.close()
-
-
-def plot_raw_consistency(df: pd.DataFrame, output: Path) -> None:
-    if df.empty:
-        return
-    plt = ensure_matplotlib()
-    plt.figure(figsize=(8, 5))
-    sizes = [max(20, count * 8) for count in df["response_count"]]
-    plt.scatter(
-        df["majority_agreement"],
-        df["mean_pairwise_edit_distance"],
-        s=sizes,
-        c=df["normalized_answer_entropy"],
-        cmap="viridis",
-        alpha=0.75,
-    )
-    plt.colorbar(label="normalized answer entropy")
-    plt.title("Raw Call Response Consistency")
-    plt.xlabel("majority agreement (0-1)")
-    plt.ylabel("mean pairwise edit distance (0-1)")
-    plt.tight_layout()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output, dpi=180)
-    plt.close()
-
-
-def plot_raw_agreement_by_method_and_benchmark(df: pd.DataFrame, output: Path) -> None:
-    if df.empty or "method" not in df.columns:
-        return
-    label_columns = [column for column in ("method",) if column in df.columns]
-    group_columns = [column for column in ("benchmark", *label_columns) if column in df.columns]
-    plot_df = (
-        df.dropna(subset=["majority_agreement"])
-        .groupby(group_columns, dropna=False)["majority_agreement"]
-        .mean()
-        .reset_index()
-    )
-    if plot_df.empty or "benchmark" not in plot_df.columns:
-        return
-    plt = ensure_matplotlib()
-    groups = benchmark_groups(plot_df)
-    rows, columns = subplot_grid_size(len(groups))
-    fig, axes = plt.subplots(rows, columns, figsize=a4_landscape_size(rows), squeeze=False)
-    for axis, (benchmark, benchmark_df) in zip(axes.flat, groups):
-        labels = [
-            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
-            for row in benchmark_df.itertuples()
-        ]
-        axis.bar(labels, benchmark_df["majority_agreement"], color=bar_colors(benchmark_df))
-        axis.set_title(str(benchmark), fontsize=9)
-        axis.set_ylim(0, 1.05)
-        axis.set_ylabel(metric_axis_label("majority_agreement"), fontsize=8)
-        axis.tick_params(axis="x", labelrotation=45, labelsize=7)
-        axis.tick_params(axis="y", labelsize=7)
-        add_method_highlight_legend(axis, benchmark_df)
-    for axis in list(axes.flat)[len(groups):]:
-        axis.axis("off")
-    fig.suptitle("Raw Call Majority Agreement", fontsize=13)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=180)
-    plt.close(fig)
-
-    for benchmark, benchmark_df in groups:
-        labels = [
-            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
-            for row in benchmark_df.itertuples()
-        ]
-        plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
-        plt.bar(labels, benchmark_df["majority_agreement"], color=bar_colors(benchmark_df))
-        add_method_highlight_legend(plt.gca(), benchmark_df)
-        plt.title(f"Raw Call Majority Agreement - {benchmark}")
-        plt.ylabel(metric_axis_label("majority_agreement"))
-        plt.ylim(0, 1.05)
-        plt.xticks(rotation=45, ha="right")
-        plt.tight_layout()
-        benchmark_path = benchmark_output(output, benchmark)
-        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(benchmark_path, dpi=180)
-        plt.close()
-
-
-def methods_heatmap_matrix(df: pd.DataFrame, benchmark: Any) -> pd.DataFrame:
-    benchmark_df = df[df["benchmark"].eq(benchmark)].dropna(subset=["solved"])
-    if benchmark_df.empty:
-        return pd.DataFrame()
-    plot_df = (
-        benchmark_df.groupby(["sample", "method"], dropna=False)["solved"]
-        .mean()
-        .reset_index()
-        .pivot(index="sample", columns="method", values="solved")
-        .sort_index()
-    )
-    return plot_df.reindex(sorted(plot_df.columns), axis=1)
-
-
-def draw_methods_heatmap(axis, matrix: pd.DataFrame, title: str, show_labels: bool = True):
-    image = axis.imshow(matrix.values, aspect="auto", cmap="viridis", vmin=0, vmax=1)
-    axis.set_title(title, fontsize=9 if show_labels else 8)
-    axis.set_xticks(range(len(matrix.columns)))
-    axis.set_xticklabels(matrix.columns, rotation=45, ha="right", fontsize=7 if show_labels else 5)
-
-    row_count = len(matrix.index)
-    if row_count <= 20:
-        y_positions = list(range(row_count))
-    else:
-        step = math.ceil(row_count / 10)
-        y_positions = list(range(0, row_count, step))
-    axis.set_yticks(y_positions)
-    axis.set_yticklabels([f"Run {int(matrix.index[position])}" for position in y_positions], fontsize=7 if show_labels else 5)
-    axis.tick_params(which="both", bottom=True, left=True)
-
-    if show_labels:
-        axis.set_xlabel("Method", fontsize=8)
-        axis.set_ylabel("Sample index (instance)", fontsize=8)
-
-    if row_count <= 60 and len(matrix.columns) <= 20:
-        axis.set_xticks([index - 0.5 for index in range(1, len(matrix.columns))], minor=True)
-        axis.set_yticks([index - 0.5 for index in range(1, row_count)], minor=True)
-        axis.grid(which="minor", axis="both", color="white", linewidth=0.4)
-        axis.tick_params(which="minor", bottom=False, left=False)
-    return image
-
-
-def plot_methods_heatmap_by_benchmark(df: pd.DataFrame, output: Path) -> None:
-    if df.empty or not {"benchmark", "method", "sample", "solved"}.issubset(df.columns):
-        return
-    plt = ensure_matplotlib()
-    benchmarks = sorted(df["benchmark"].dropna().unique())
-    matrices = [(benchmark, methods_heatmap_matrix(df, benchmark)) for benchmark in benchmarks]
-    matrices = [(benchmark, matrix) for benchmark, matrix in matrices if not matrix.empty]
-    if not matrices:
-        return
-
-    rows, columns = subplot_grid_size(len(matrices))
-    fig, axes = plt.subplots(rows, columns, figsize=a4_landscape_size(rows), squeeze=False, constrained_layout=True)
-    last_image = None
-    for axis, (benchmark, matrix) in zip(axes.flat, matrices):
-        last_image = draw_methods_heatmap(axis, matrix, str(benchmark), show_labels=False)
-    for axis in list(axes.flat)[len(matrices):]:
-        axis.axis("off")
-    if last_image is not None:
-        cbar = fig.colorbar(last_image, ax=axes.ravel().tolist(), ticks=[0, 1], shrink=0.72)
-        cbar.set_ticklabels(["Not solved", "Solved"])
-        cbar.set_label("Solved status (0/1)")
-    fig.suptitle("Methods Solved Heatmap", fontsize=13)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=180)
-    plt.close(fig)
-
-    for benchmark, matrix in matrices:
-        fig, axis = plt.subplots(figsize=(max(8, len(matrix.columns) * 0.7), max(6, len(matrix.index) * 0.16)))
-        image = draw_methods_heatmap(axis, matrix, f"Methods Solved Heatmap - {benchmark}")
-        cbar = fig.colorbar(image, ax=axis, label="Solved status (0/1)", ticks=[0, 1], orientation="vertical")
-        cbar.set_ticklabels(["Not solved", "Solved"])
-        fig.tight_layout()
-        benchmark_path = benchmark_output(output, benchmark)
-        benchmark_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(benchmark_path, dpi=180, bbox_inches="tight")
-        plt.close(fig)
-
-
 METHOD_GROUP_COLUMNS = ["model", "benchmark", "method"]
 
 
@@ -1362,6 +971,44 @@ def aggregate_raw_by_method(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def aggregate_solved_cost_by_method(quality: pd.DataFrame, usage: pd.DataFrame) -> pd.DataFrame:
+    group_columns = [column for column in METHOD_GROUP_COLUMNS if column in quality.columns and column in usage.columns]
+    if quality.empty or usage.empty or not group_columns:
+        return pd.DataFrame()
+
+    usage_columns = [
+        column
+        for column in ("total_cost", "total_tokens", "calls_total", "score_per_dollar")
+        if column in usage.columns
+    ]
+    quality_columns = [
+        column
+        for column in ("sample_count", "solved_count", "solved_rate", "quality_mean")
+        if column in quality.columns
+    ]
+    merged = quality[group_columns + quality_columns].merge(
+        usage[group_columns + usage_columns],
+        on=group_columns,
+        how="inner",
+    )
+    if merged.empty:
+        return merged
+
+    merged["cost_per_solved"] = [
+        safe_ratio(cost, solved) for cost, solved in zip(merged.get("total_cost"), merged.get("solved_count"))
+    ]
+    merged["solved_per_dollar"] = [
+        safe_ratio(solved, cost) for solved, cost in zip(merged.get("solved_count"), merged.get("total_cost"))
+    ]
+    merged["solved_rate_per_dollar"] = [
+        safe_ratio(rate, cost) for rate, cost in zip(merged.get("solved_rate"), merged.get("total_cost"))
+    ]
+    merged["cost_per_solved_rate_point"] = [
+        safe_ratio(cost, rate) for cost, rate in zip(merged.get("total_cost"), merged.get("solved_rate"))
+    ]
+    return merged
+
+
 def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     method_logs = iter_method_logs(logs_dir)
@@ -1371,6 +1018,7 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     convergence = aggregate_convergence_by_method(convergence_auc(method_logs))
     usage = aggregate_usage_by_method(usage_metrics(method_logs))
     quality = aggregate_quality_by_method(quality_solution_metrics(method_logs))
+    solved_cost = aggregate_solved_cost_by_method(quality, usage)
     quality_samples = quality_sample_metrics(method_logs)
     raw = aggregate_raw_by_method(raw_response_consistency(raw_dir))
 
@@ -1379,44 +1027,29 @@ def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
     convergence.to_csv(metric_data(output_dir, "convergence_auc"), index=False)
     usage.to_csv(metric_data(output_dir, "usage_metrics"), index=False)
     quality.to_csv(metric_data(output_dir, "quality_solution_metrics"), index=False)
+    solved_cost.to_csv(metric_data(output_dir, "solved_cost_metrics"), index=False)
     quality_samples.to_csv(metric_data(output_dir, "methods_heatmap"), index=False)
     raw.to_csv(metric_data(output_dir, "raw_response_consistency"), index=False)
 
-    plot_bar_by_benchmark(
-        effort,
-        "score_per_method_effort",
-        "Score per Method Effort",
-        metric_plot(output_dir, "score_per_method_effort"),
-    )
-    plot_bar_by_benchmark(
-        diversity,
-        "normalized_action_entropy",
-        "Exploration Diversity",
-        metric_plot(output_dir, "normalized_action_entropy"),
-    )
-    plot_convergence_by_benchmark(convergence, metric_plot(output_dir, "convergence_auc"))
-    plot_bar_by_benchmark(usage, "calls_total", "Total Calls", metric_plot(output_dir, "calls_total"))
-    plot_bar_by_benchmark(usage, "total_tokens", "Total Tokens", metric_plot(output_dir, "total_tokens"))
-    plot_bar_by_benchmark(usage, "total_cost", "Total Cost", metric_plot(output_dir, "total_cost"))
-    plot_bar_by_benchmark(usage, "score_per_dollar", "Score per Dollar", metric_plot(output_dir, "score_per_dollar"))
-    plot_bar_by_benchmark(quality, "quality_mean", "Quality Mean", metric_plot(output_dir, "quality_mean"))
-    plot_bar_by_benchmark(quality, "solved_rate", "Solved Rate", metric_plot(output_dir, "solved_rate"))
-    plot_bar_by_benchmark(quality, "mean_solution_time", "Mean Solution Time", metric_plot(output_dir, "mean_solution_time"))
-    plot_bar_by_benchmark(
-        quality,
-        "mean_solved_solution_time",
-        "Mean Solved Solution Time",
-        metric_plot(output_dir, "mean_solved_solution_time"),
-    )
-    plot_bar_by_benchmark(
-        quality,
-        "clocktime_per_solved",
-        "Clocktime per Solved",
-        metric_plot(output_dir, "clocktime_per_solved"),
-    )
-    plot_methods_heatmap_by_benchmark(quality_samples, metric_plot(output_dir, "methods_heatmap"))
-    plot_raw_consistency(raw, metric_plot(output_dir, "raw_response_consistency"))
-    plot_raw_agreement_by_method_and_benchmark(raw, metric_plot(output_dir, "raw_majority_agreement"))
+    score_per_method_effort_metric.write(effort, output_dir)
+    normalized_action_entropy_metric.write(diversity, output_dir)
+    convergence_auc_metric.write(convergence, output_dir)
+    # calls_total_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
+    # total_tokens_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
+    # total_cost_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
+    score_per_dollar_metric.write(usage, output_dir)
+    # cost_per_solved_metric.write(solved_cost, output_dir)  # filtered: neither highlighted method is best for this metric
+    solved_per_dollar_metric.write(solved_cost, output_dir)
+    solved_rate_per_dollar_metric.write(solved_cost, output_dir)
+    # cost_per_solved_rate_point_metric.write(solved_cost, output_dir)  # filtered: neither highlighted method is best for this metric
+    quality_mean_metric.write(quality, output_dir)
+    solved_rate_metric.write(quality, output_dir)
+    # mean_solution_time_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
+    # mean_solved_solution_time_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
+    # clocktime_per_solved_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
+    methods_heatmap_metric.write(quality_samples, output_dir)
+    raw_response_consistency_metric.write(raw, output_dir)
+    # raw_majority_agreement_metric.write(raw, output_dir)  # filtered: neither highlighted method is best for this metric
 
 
 def main() -> None:
