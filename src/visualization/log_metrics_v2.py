@@ -468,9 +468,9 @@ def focus_benchmark_difficulty(benchmark: pd.DataFrame, focus_methods: list[str]
     return pd.concat(rows, ignore_index=True)
 
 
-def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
-    """Write one aggregate bar chart for every method-level metric."""
-    metrics = [
+def overall_metric_specs() -> list[tuple[str, str, bool]]:
+    """Metrics plotted for all-method aggregate and per-benchmark views."""
+    return [
         ("macro_normalized_quality", "Macro Normalized Quality", False),
         ("micro_normalized_quality", "Micro Normalized Quality", False),
         ("solved_instances", "Total Solved Instances", False),
@@ -487,6 +487,11 @@ def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
         ("solved_per_1k_calls", "Solved Instances per 1,000 Calls", False),
         ("performance_priority_composite_rank", "Performance-Priority Composite Rank", True),
     ]
+
+
+def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Write one aggregate bar chart for every method-level metric."""
+    metrics = overall_metric_specs()
     paths: list[Path] = []
     overall_dir = plots_dir / "overall"
     overall_dir.mkdir(parents=True, exist_ok=True)
@@ -665,24 +670,46 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
 
 
 def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
-    """Create one standalone plot per benchmark/metric, with all methods shown."""
+    """Create one standalone plot per benchmark/overall-style metric, with all methods shown."""
     output_dir = plots_dir / "per_benchmark_all_methods"
     output_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    metrics = [
-        ("normalized_quality", "Normalized Quality"),
-        ("solved_rate", "Solved Rate"),
-        ("total_cost", "Total Cost"),
-        ("total_calls", "Total Calls"),
-    ]
+    metrics = overall_metric_specs()
     for model, model_part in benchmark.groupby("model", dropna=False):
         methods = sorted(model_part["method"].unique())
         for bench_name, bench_part in model_part.groupby("benchmark", dropna=False):
             values = bench_part.set_index("method").reindex(methods).reset_index()
+            values["macro_normalized_quality"] = values["normalized_quality"]
+            values["micro_normalized_quality"] = values["normalized_quality"]
+            values["overall_solved_rate"] = values["solved_rate"]
+            values["macro_solved_rate"] = values["solved_rate"]
+            values["harmonic_effectiveness"] = harmonic_mean(
+                values["macro_normalized_quality"], values["macro_solved_rate"]
+            )
+            values["cost_per_solved"] = values["total_cost"] / values["solved_instances"].replace(0, np.nan)
+            values["calls_per_solved"] = values["total_calls"] / values["solved_instances"].replace(0, np.nan)
+            values["quality_per_dollar"] = values["macro_normalized_quality"] / values["total_cost"].replace(0, np.nan)
+            values["quality_per_1k_calls"] = values["macro_normalized_quality"] / (
+                values["total_calls"].replace(0, np.nan) / 1000
+            )
+            values["solved_per_dollar"] = values["solved_instances"] / values["total_cost"].replace(0, np.nan)
+            values["solved_per_1k_calls"] = values["solved_instances"] / (
+                values["total_calls"].replace(0, np.nan) / 1000
+            )
+            values["rank_quality"] = values["macro_normalized_quality"].rank(ascending=False, method="min")
+            values["rank_solved"] = values["solved_instances"].rank(ascending=False, method="min")
+            values["rank_cost"] = values["total_cost"].rank(ascending=True, method="min")
+            values["rank_calls"] = values["total_calls"].rank(ascending=True, method="min")
+            values["performance_priority_composite_rank"] = (
+                0.40 * values["rank_quality"]
+                + 0.30 * values["rank_solved"]
+                + 0.15 * values["rank_cost"]
+                + 0.15 * values["rank_calls"]
+            )
             attempts = values["attempted_instances"].dropna()
             attempts_label = f"n={int(attempts.iloc[0])}" if not attempts.empty else "n=unknown"
-            for metric, title in metrics:
-                ordered = values.sort_values(metric, ascending=False, na_position="last")
+            for metric, title, ascending in metrics:
+                ordered = values.sort_values(metric, ascending=ascending, na_position="last")
                 fig, ax = plt.subplots(figsize=(11, 5.8), constrained_layout=True)
                 ax.bar(ordered["method"], ordered[metric])
                 ax.set_title(f"{title} by Method - {bench_name} - {model} ({attempts_label})")
@@ -691,7 +718,7 @@ def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: P
                 _format_axis(ax, metric)
                 for idx, value in enumerate(ordered[metric]):
                     if pd.notna(value):
-                        label = f"{int(value):,}" if metric == "total_calls" else f"{value:,.4f}"
+                        label = f"{int(value):,}" if metric in {"solved_instances", "total_calls"} else f"{value:,.4f}"
                         ax.text(idx, value, label, ha="center", va="bottom", fontsize=8)
                 path = output_dir / f"{_slug(model)}_{_slug(bench_name)}_{metric}.png"
                 fig.savefig(path, dpi=180)
