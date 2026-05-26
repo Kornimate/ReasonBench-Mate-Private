@@ -753,7 +753,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="runtime",
         help="Use benchmark runtime medical thresholds (recommended) or reproduce legacy visualization thresholds",
     )
-    parser.add_argument("--bootstrap", type=int, default=10000, help="Bootstrap samples for top-two quality difference; 0 disables")
+    parser.add_argument("--bootstrap", type=int, default=50000, help="Bootstrap samples for top-two quality difference; 0 disables")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for bootstrap")
     parser.add_argument("--print-table", action="store_true", help="Print the main summary table to stdout")
     parser.add_argument("--no-plots", action="store_true", help="Export CSV tables only; skip all PNG plot generation")
