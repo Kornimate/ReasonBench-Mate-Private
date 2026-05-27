@@ -36,7 +36,21 @@ for name in NAMES:
         check=True
     )
 
-    print(f"Clustering Trajectory metrics computed successfully. ({name})")
+    print(f"Clustering visualizations computed successfully. ({name})")
+
+subprocess.run(
+    [sys.executable,
+    "./src/visualization/clustering_utils/cluster_visualizations.py",
+    "--results-dir", "./results/clustering/cluster_metrics/tfidf/mimic_rrs",
+    "--proposals-csv", "./results/clustering/semantic_metrics/tfidf/mimic_rrs/proposals.csv",
+    "--output-dir", "./results/clustering/plots/tfidf/mimic_rrs",
+    "--cross-only",
+    "--cluster-root", "./results/clustering/cluster_metrics/tfidf",
+    "--cross-output-dir", "./results/clustering/plots/tfidf"],
+    check=True
+)
+
+print("Cross-benchmark clustering visualization computed successfully.")
 
 # # 1. Compute semantic trajectory metrics from the raw conversation-log ZIP
 # py .\semantic_metrics\semantic_trajectory_metrics.py `

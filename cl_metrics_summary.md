@@ -9,9 +9,11 @@ for each dataset in `logs/raw_calls/repeats/gpt-4.1-nano`:
 2. `cluster_trajectory_metrics.py` pools proposals from all methods per case,
    clusters them into shared semantic families, and computes cluster coverage,
    discovery, redundancy, and efficiency metrics.
-3. `cluster_visualizations.py` reads all saved CSV outputs and creates plots for
-   headline metrics plus the remaining method-level, case-level, threshold-level,
-   cluster-level, and assignment-level diagnostics.
+3. `cluster_visualizations.py` reads all saved CSV outputs and creates the kept
+   visualization set: five top-level plots for each benchmark plus three
+   globally selected metric plots. The three selected subfolder plots are the
+   metrics where `heterogeneous_foa` and `reagents` are strongest most often
+   across benchmarks.
 
 The current command uses the deterministic TF-IDF diagnostic backend. In this
 backend, semantic trajectory metrics use word and bigram TF-IDF vectors, while
@@ -309,35 +311,100 @@ Cluster outputs:
 
 ## Plot Outputs
 
-`cluster_visualizations.py` now plots the headline figures and all remaining
-numeric metric families. For each dataset, plots are written under:
+`cluster_visualizations.py` now writes only the kept visualization set. For each
+dataset, plots are written under:
 
 ```text
 results/clustering/plots/tfidf/<dataset>/
 ```
 
-Headline plots:
+Each benchmark keeps eight plots total:
+
+- Five top-level plots in `results/clustering/plots/tfidf/<dataset>/`.
+- Three selected metric plots in subfolders.
+
+### Top-level plots
 
 - `robust_efficiency_bar.png`
 - `efficiency_vs_threshold.png`
 - `coverage_vs_redundancy.png`
+- `semantic_map_case_auto.png`
 - `semantic_map_case_<case_id>.png`
 
-Expanded plot directories:
+`semantic_map_case_auto.png` and `semantic_map_case_<case_id>.png` contain the
+same automatically selected representative case. The case-id copy exists so the
+file name records which case was selected.
 
-- `semantic_method_metrics/`
-- `semantic_case_metric_distributions/`
-- `cluster_robustness_metrics/`
-- `cluster_threshold_metrics/`
-- `cluster_case_metric_distributions/`
-- `cluster_table_distributions/`
-- `assignment_distributions/`
+Math shown by the top-level plots:
 
-These expanded plots intentionally include both aggregate method views and
-non-aggregate distributions. The goal is to make every saved metric inspectable:
-method averages show ranking behavior, threshold lines show sensitivity, boxplots
-show case-level spread, cluster histograms show cluster structure, and assignment
-histograms show proposal-level grounding behavior.
+```text
+robust_efficiency_bar:
+    robust_grounded_cluster_efficiency_full_m =
+        mean_threshold grounded_cluster_efficiency_full_{m, threshold}
+
+efficiency_vs_threshold:
+    y_{m, threshold} = grounded_cluster_efficiency_full_{m, threshold}
+
+coverage_vs_redundancy:
+    x_m = mean_threshold redundancy_rate_{m, threshold}
+    y_m = mean_threshold grounded_cluster_coverage_{m, threshold}
+```
+
+The semantic map is a display-only projection:
+
+```text
+proposal texts -> TF-IDF -> TruncatedSVD -> normalization -> PCA(2D)
+```
+
+The map colors/marks proposals by method and annotates cluster centers. It is
+not the metric space used for scoring; it is only an illustrative 2D view of one
+representative case.
+
+### Selected subfolder plots
+
+Every benchmark keeps the same three selected metric plots:
+
+- `semantic_method_metrics/source_alignment_best.png`
+- `semantic_method_metrics/best_alignment_auc.png`
+- `cluster_robustness_metrics/effective_cluster_count.png`
+
+These are the three substantive metrics that most often put
+`heterogeneous_foa` or `reagents` at the top or nearly at the top across
+benchmarks.
+
+Math shown by the selected subfolder plots:
+
+```text
+source_alignment_best_m =
+    mean_case max_t cosine(v(f), v(p_t))
+
+best_alignment_auc_m =
+    mean_case mean_t max_{i <= t} cosine(v(f), v(p_i))
+
+effective_cluster_count_m =
+    mean_threshold mean_case exp(-sum_k q_k ln(q_k))
+```
+
+The first two plots come from `metrics_by_method.csv`; the third comes from
+`cluster_metrics_robustness.csv`, after threshold robustness aggregation.
+
+### Cross-benchmark clustering plot
+
+The root plot directory also contains a cross-benchmark summary:
+
+- `results/clustering/plots/tfidf/cross_benchmark_clustering_efficiency.png`
+- `results/clustering/plots/tfidf/cross_benchmark_clustering_summary.csv`
+
+For each benchmark and target method:
+
+```text
+fraction_of_benchmark_best =
+    grounded_cluster_efficiency_full_target
+    / max_method grounded_cluster_efficiency_full_method
+```
+
+This plot is calculated from the existing robustness CSVs. It compares
+`heterogeneous_foa` and `reagents` against the best method in each benchmark.
 
 ## Interpretation Caveats
 

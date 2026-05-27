@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 from pathlib import Path
 
 import matplotlib
@@ -37,6 +38,21 @@ from sklearn.preprocessing import normalize
 
 
 FIG_DPI = 180
+TARGET_METHODS = {"heterogeneous_foa", "reagents"}
+PLOT_SUBDIRS = {
+    "semantic_method_metrics",
+    "semantic_case_metric_distributions",
+    "cluster_robustness_metrics",
+    "cluster_threshold_metrics",
+    "cluster_case_metric_distributions",
+    "cluster_table_distributions",
+    "assignment_distributions",
+}
+GLOBAL_SELECTED_SUBFOLDER_PLOTS = [
+    ("semantic_method", "semantic_method_metrics", "Semantic method metrics", "source_alignment_best"),
+    ("semantic_method", "semantic_method_metrics", "Semantic method metrics", "best_alignment_auc"),
+    ("cluster_robustness", "cluster_robustness_metrics", "Cluster robustness metrics", "effective_cluster_count"),
+]
 
 
 def load_tables(results_dir: Path, proposals_csv: Path):
@@ -58,6 +74,15 @@ def numeric_metric_columns(df: pd.DataFrame, exclude: set[str]) -> list[str]:
 
 def safe_filename(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_")
+
+
+def clean_visualization_dir(out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for child in out_dir.iterdir():
+        if child.is_dir() and child.name in PLOT_SUBDIRS:
+            shutil.rmtree(child)
+        elif child.is_file() and child.suffix.lower() == ".png":
+            child.unlink()
 
 
 def plot_method_bars(df: pd.DataFrame, metrics: list[str], out_dir: Path, prefix: str) -> None:
@@ -102,6 +127,54 @@ def plot_threshold_lines(by_threshold: pd.DataFrame, metrics: list[str], out_dir
         plt.tight_layout()
         plt.savefig(out_dir / f"{safe_filename(metric)}.png", dpi=FIG_DPI)
         plt.close()
+
+
+def plot_cross_benchmark_clustering(cluster_root: Path, out_dir: Path) -> None:
+    rows = []
+    for benchmark_dir in sorted(path for path in cluster_root.iterdir() if path.is_dir()):
+        robustness_path = benchmark_dir / "cluster_metrics_robustness.csv"
+        if not robustness_path.exists():
+            continue
+        robustness = pd.read_csv(robustness_path)
+        subgroup = robustness[robustness["method"].isin(TARGET_METHODS)].copy()
+        if subgroup.empty or "grounded_cluster_efficiency_full" not in subgroup:
+            continue
+        best_all = robustness["grounded_cluster_efficiency_full"].max()
+        subgroup["subgroup_rank"] = subgroup["grounded_cluster_efficiency_full"].rank(ascending=False, method="min")
+        for _, row in subgroup.iterrows():
+            rows.append({
+                "benchmark": benchmark_dir.name,
+                "method": row["method"],
+                "grounded_cluster_efficiency_full": row["grounded_cluster_efficiency_full"],
+                "fraction_of_benchmark_best": row["grounded_cluster_efficiency_full"] / best_all if best_all else np.nan,
+                "target_subgroup_rank": row["subgroup_rank"],
+            })
+    if not rows:
+        return
+
+    df = pd.DataFrame(rows)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_dir / "cross_benchmark_clustering_summary.csv", index=False)
+
+    benchmarks = sorted(df["benchmark"].unique())
+    methods = [method for method in ["heterogeneous_foa", "reagents"] if method in set(df["method"])]
+    x = np.arange(len(benchmarks))
+    width = 0.36 if len(methods) > 1 else 0.5
+    plt.figure(figsize=(max(10, 0.7 * len(benchmarks)), 6))
+    for idx, method in enumerate(methods):
+        sub = df[df["method"] == method].set_index("benchmark").reindex(benchmarks)
+        offset = (idx - (len(methods) - 1) / 2) * width
+        plt.bar(x + offset, sub["fraction_of_benchmark_best"], width=width, label=method)
+    plt.axhline(0.95, color="0.35", linewidth=1, linestyle="--", label="95% of best")
+    plt.xticks(x, benchmarks, rotation=45, ha="right")
+    plt.ylim(0, 1.08)
+    plt.ylabel("Fraction of benchmark-best clustering efficiency")
+    plt.xlabel("Benchmark")
+    plt.title("Cross-benchmark clustering efficiency for target methods")
+    plt.legend(loc="best", fontsize=8)
+    plt.tight_layout()
+    plt.savefig(out_dir / "cross_benchmark_clustering_efficiency.png", dpi=FIG_DPI)
+    plt.close()
 
 
 def plot_case_metric_distributions(df: pd.DataFrame, metrics: list[str], out_dir: Path, prefix: str) -> None:
@@ -286,13 +359,7 @@ def write_manifest(out_dir: Path, representative_case: int, threshold: float) ->
         "- efficiency_vs_threshold.png: sensitivity of full efficiency to clustering threshold",
         "- coverage_vs_redundancy.png: trade-off plot between coverage and repetition",
         f"- semantic_map_case_{representative_case}.png: illustrative 2D semantic map for case {representative_case} at threshold {threshold}",
-        "- semantic_method_metrics/: one bar chart per semantic method-level metric",
-        "- semantic_case_metric_distributions/: one boxplot per semantic case-level metric",
-        "- cluster_robustness_metrics/: one bar chart per threshold-robust method-level cluster metric",
-        "- cluster_threshold_metrics/: one line chart per threshold-sensitive cluster metric",
-        "- cluster_case_metric_distributions/: one boxplot per cluster case-level metric",
-        "- cluster_table_distributions/: histograms for cluster size, method sharing, and cluster grounding",
-        "- assignment_distributions/: proposal assignment diagnostics, including source-alignment histograms",
+        "- metric-specific subfolders: the same three globally selected plots across every benchmark: `source_alignment_best`, `best_alignment_auc`, and `effective_cluster_count`.",
         "",
         "High-dimensionality note:",
         "The semantic map uses a two-stage dimensionality reduction pipeline (TF-IDF → latent semantic projection → PCA to 2D) to reduce sparsity/noise before plotting. The 2D plot is for interpretation only and should not be used as the quantitative score.",
@@ -307,48 +374,36 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--semantic-threshold", type=float, default=0.05)
     parser.add_argument("--case-id", type=int, default=None)
+    parser.add_argument("--max-selected-subfolder-plots", type=int, default=3)
+    parser.add_argument("--cross-only", action="store_true")
+    parser.add_argument("--cluster-root", type=Path, default=None)
+    parser.add_argument("--cross-output-dir", type=Path, default=None)
     args = parser.parse_args()
+
+    if args.cross_only:
+        if args.cluster_root is None or args.cross_output_dir is None:
+            raise ValueError("--cross-only requires --cluster-root and --cross-output-dir")
+        plot_cross_benchmark_clustering(args.cluster_root, args.cross_output_dir)
+        print(f"Wrote cross-benchmark clustering plot to {args.cross_output_dir}")
+        return
 
     robustness, by_threshold, assignments, cluster_cases, clusters, proposals, semantic_cases, semantic_methods = load_tables(
         args.results_dir, args.proposals_csv
     )
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    clean_visualization_dir(args.output_dir)
 
     plot_robust_efficiency(robustness, args.output_dir / "robust_efficiency_bar.png")
     plot_efficiency_vs_threshold(by_threshold, args.output_dir / "efficiency_vs_threshold.png")
     plot_coverage_vs_redundancy(robustness, args.output_dir / "coverage_vs_redundancy.png")
 
-    plot_method_bars(
-        semantic_methods,
-        numeric_metric_columns(semantic_methods, {"case_id"}),
-        args.output_dir / "semantic_method_metrics",
-        "Semantic method metrics",
-    )
-    plot_case_metric_distributions(
-        semantic_cases,
-        numeric_metric_columns(semantic_cases, {"case_id"}),
-        args.output_dir / "semantic_case_metric_distributions",
-        "Semantic trajectory metrics",
-    )
-    plot_method_bars(
-        robustness,
-        numeric_metric_columns(robustness, set()),
-        args.output_dir / "cluster_robustness_metrics",
-        "Cluster robustness metrics",
-    )
-    plot_threshold_lines(
-        by_threshold,
-        numeric_metric_columns(by_threshold, {"threshold"}),
-        args.output_dir / "cluster_threshold_metrics",
-    )
-    plot_case_metric_distributions(
-        cluster_cases,
-        numeric_metric_columns(cluster_cases, {"case_id", "threshold"}),
-        args.output_dir / "cluster_case_metric_distributions",
-        "Cluster trajectory metrics",
-    )
-    plot_cluster_table_distributions(clusters, args.output_dir / "cluster_table_distributions")
-    plot_assignment_alignment(assignments, args.output_dir / "assignment_distributions")
+    selected = GLOBAL_SELECTED_SUBFOLDER_PLOTS[: args.max_selected_subfolder_plots]
+    for source, folder, prefix, metric in selected:
+        if source == "cluster_threshold":
+            plot_threshold_lines(by_threshold, [metric], args.output_dir / folder)
+        elif source == "cluster_robustness":
+            plot_method_bars(robustness, [metric], args.output_dir / folder, prefix)
+        else:
+            plot_method_bars(semantic_methods, [metric], args.output_dir / folder, prefix)
 
     case_id = plot_semantic_map(assignments, proposals, args.output_dir / f"semantic_map_case_{args.case_id if args.case_id is not None else 'auto'}.png", threshold=args.semantic_threshold, case_id=args.case_id)
 
@@ -356,7 +411,7 @@ def main() -> None:
     auto_path = args.output_dir / "semantic_map_case_auto.png"
     actual_path = args.output_dir / f"semantic_map_case_{case_id}.png"
     if auto_path.exists() and not actual_path.exists():
-        auto_path.rename(actual_path)
+        shutil.copy2(auto_path, actual_path)
     write_manifest(args.output_dir, case_id, args.semantic_threshold)
     print(f"Wrote visualizations to {args.output_dir}")
     print(f"Representative semantic-map case: {case_id}")
