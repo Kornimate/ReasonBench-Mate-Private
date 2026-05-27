@@ -348,26 +348,6 @@ def plot_semantic_map(assignments: pd.DataFrame, proposals: pd.DataFrame, out_pa
     return actual_case_id
 
 
-def write_manifest(out_dir: Path, representative_case: int, threshold: float) -> None:
-    text = "\n".join([
-        "# Visualization outputs",
-        "",
-        "These figures are derived from the already saved clustering outputs.",
-        "No clustering experiment was rerun.",
-        "",
-        "Files:",
-        "- robust_efficiency_bar.png: robust full-efficiency ranking by method",
-        "- efficiency_vs_threshold.png: sensitivity of full efficiency to clustering threshold",
-        "- coverage_vs_redundancy.png: trade-off plot between coverage and repetition",
-        f"- semantic_map_case_{representative_case}.png: illustrative 2D semantic map for case {representative_case} at threshold {threshold}",
-        "- metric-specific subfolders: the same three globally selected plots across every benchmark: `source_alignment_best`, `best_alignment_auc`, and `effective_cluster_count`.",
-        "",
-        "High-dimensionality note:",
-        "The semantic map uses a two-stage dimensionality reduction pipeline (TF-IDF → latent semantic projection → PCA to 2D) to reduce sparsity/noise before plotting. The 2D plot is for interpretation only and should not be used as the quantitative score.",
-    ])
-    (out_dir / "README_visualizations.md").write_text(text, encoding="utf-8")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", type=Path, required=True)
@@ -413,7 +393,6 @@ def main() -> None:
     actual_path = args.output_dir / f"semantic_map_case_{case_id}.png"
     if auto_path.exists() and not actual_path.exists():
         shutil.copy2(auto_path, actual_path)
-    write_manifest(args.output_dir, case_id, args.semantic_threshold)
     print(f"Wrote visualizations to {args.output_dir}")
     print(f"Representative semantic-map case: {case_id}")
 
