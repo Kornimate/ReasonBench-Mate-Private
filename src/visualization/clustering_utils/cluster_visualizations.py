@@ -39,6 +39,7 @@ from sklearn.preprocessing import normalize
 
 FIG_DPI = 180
 TARGET_METHODS = {"heterogeneous_foa", "reagents"}
+CROSS_BENCHMARK_METHODS = ["foa", "heterogeneous_foa", "rap", "reagents", "tot_bfs"]
 PLOT_SUBDIRS = {
     "semantic_method_metrics",
     "semantic_case_metric_distributions",
@@ -136,7 +137,7 @@ def plot_cross_benchmark_clustering(cluster_root: Path, out_dir: Path) -> None:
         if not robustness_path.exists():
             continue
         robustness = pd.read_csv(robustness_path)
-        subgroup = robustness[robustness["method"].isin(TARGET_METHODS)].copy()
+        subgroup = robustness[robustness["method"].isin(CROSS_BENCHMARK_METHODS)].copy()
         if subgroup.empty or "grounded_cluster_efficiency_full" not in subgroup:
             continue
         best_all = robustness["grounded_cluster_efficiency_full"].max()
@@ -157,10 +158,10 @@ def plot_cross_benchmark_clustering(cluster_root: Path, out_dir: Path) -> None:
     df.to_csv(out_dir / "cross_benchmark_clustering_summary.csv", index=False)
 
     benchmarks = sorted(df["benchmark"].unique())
-    methods = [method for method in ["heterogeneous_foa", "reagents"] if method in set(df["method"])]
+    methods = [method for method in CROSS_BENCHMARK_METHODS if method in set(df["method"])]
     x = np.arange(len(benchmarks))
-    width = 0.36 if len(methods) > 1 else 0.5
-    plt.figure(figsize=(max(10, 0.7 * len(benchmarks)), 6))
+    width = min(0.16, 0.82 / max(1, len(methods))) if len(methods) > 1 else 0.5
+    plt.figure(figsize=(max(12, 0.85 * len(benchmarks)), 6.5))
     for idx, method in enumerate(methods):
         sub = df[df["method"] == method].set_index("benchmark").reindex(benchmarks)
         offset = (idx - (len(methods) - 1) / 2) * width
@@ -170,8 +171,8 @@ def plot_cross_benchmark_clustering(cluster_root: Path, out_dir: Path) -> None:
     plt.ylim(0, 1.08)
     plt.ylabel("Fraction of benchmark-best clustering efficiency")
     plt.xlabel("Benchmark")
-    plt.title("Cross-benchmark clustering efficiency for target methods")
-    plt.legend(loc="best", fontsize=8)
+    plt.title("Cross-benchmark clustering efficiency for multi-route methods")
+    plt.legend(loc="best", fontsize=8, ncol=3)
     plt.tight_layout()
     plt.savefig(out_dir / "cross_benchmark_clustering_efficiency.png", dpi=FIG_DPI)
     plt.close()
