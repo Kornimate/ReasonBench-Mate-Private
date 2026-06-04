@@ -307,6 +307,31 @@ class MethodReagents(Method):
         ]
         return records, visited_states
 
+    def _log_final_records(self, idx: int, records: list[SearchRecord], label: str) -> None:
+        summaries = []
+        for record in records:
+            try:
+                is_final, score = self.env.evaluate(record.state)
+            except Exception:
+                is_final, score = False, 0.0
+            steps = getattr(record.state, "steps", []) or []
+            summaries.append({
+                "value": record.value,
+                "depth": record.depth,
+                "is_final": bool(is_final),
+                "score": self._normalize_score(score),
+                "step_count": len(steps),
+                "last_step": steps[-1] if steps else None,
+            })
+
+        log_event(label, {
+            "idx": idx,
+            "count": len(records),
+            "values": score_summary(record.value for record in records),
+            "terminal": terminal_summary(self.env, [record.state for record in records]),
+            "records": summaries,
+        })
+
     async def solve(self, idx: int, state: State, namespace: str, value_cache: dict = None):
         random.seed(idx)
         np.random.seed(idx)
@@ -363,8 +388,10 @@ class MethodReagents(Method):
             })
 
             if solved_indices:
+                solved_records = [new_records[i] for i in solved_indices]
+                self._log_final_records(idx, solved_records, "REAGENTS_FINAL_SOLVED")
                 log_section_end()
-                return [new_records[i].state for i in solved_indices]
+                return [record.state for record in solved_records]
 
             new_records, visited_states = self._filter_states(records, new_records, visited_states)
             records, visited_states = self._resample_records(
@@ -374,5 +401,6 @@ class MethodReagents(Method):
             if not records:
                 break
 
+        self._log_final_records(idx, records, "REAGENTS_FINAL_RECORDS")
         log_section_end()
         return [record.state for record in records] if records else [state]
