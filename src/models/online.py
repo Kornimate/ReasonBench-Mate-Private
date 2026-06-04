@@ -69,7 +69,7 @@ def client_init(provider: str, api_key: str) -> Any:
     # OpenAI - GPT
     if provider == "openai":
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=os.getenv(api_key))
+        client = AsyncOpenAI(api_key=os.getenv(api_key), timeout=180) # instead of default value, request dont time out in this case
         return client
     
     # Google - Gemini
