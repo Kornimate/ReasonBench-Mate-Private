@@ -97,23 +97,72 @@ def extract_final_answer(text: str) -> str | None:
     if boxed is not None:
         return clean_answer(boxed)
 
+    labelled = _extract_labelled_answer(text)
+    if labelled is not None:
+        return labelled
+
+    concluded = _extract_concluded_answer(text)
+    if concluded is not None:
+        return concluded
+
+    return None
+
+
+def _extract_labelled_answer(text: str) -> str | None:
     line_patterns = [
-        r"(?:final\s+answer|answer)\s*(?:is|:)\s*([^\n\r]*)",
+        r"(?:final\s+answer|final\s+result|answer|result)\s*(?:is|=|:)\s*([^\n\r]*)",
     ]
     for pattern in line_patterns:
         matches = re.findall(pattern, text, flags=re.IGNORECASE)
-        if matches:
-            candidate = clean_answer(matches[-1])
+        for match in reversed(matches):
+            candidate = clean_answer(match)
+            if not candidate:
+                continue
             nested = _extract_last_boxed(candidate)
-            return clean_answer(nested if nested is not None else candidate)
+            return clean_answer(nested if nested is not None else _answer_tail(candidate))
+
+    lines = [line.strip() for line in text.splitlines()]
+    for index, line in reversed(list(enumerate(lines))):
+        label = clean_answer(re.sub(r"^[#>\s-]+", "", line)).rstrip(":")
+        if not re.fullmatch(r"(?:final\s+answer|final\s+result|answer|result)", label, re.IGNORECASE):
+            continue
+        for following in lines[index + 1:index + 4]:
+            candidate = clean_answer(following)
+            if not candidate:
+                continue
+            nested = _extract_last_boxed(candidate)
+            return clean_answer(nested if nested is not None else _answer_tail(candidate))
+    return None
+
+
+def _extract_concluded_answer(text: str) -> str | None:
+    tail = _unwrap_action_text(text)[-900:]
+    conclusion_words = r"(?:therefore|thus|hence|so|consequently|finally)"
+    target_words = (
+        r"(?:answer|result|value|number|probability|area|perimeter|remainder|sum|"
+        r"m\s*\+\s*n|j\s*\+\s*k|a\s*\+\s*u|n\s*(?:mod|\\bmod)\s*1000)"
+    )
+    candidate = (
+        r"(\\(?:d?frac)\{[^{}]+\}\{[^{}]+\}|\\sqrt\{[^{}]+\}|"
+        r"-?\d+(?:\.\d+)?(?:\s*/\s*-?\d+(?:\.\d+)?)?|[a-zA-Z0-9_+\-*/().^{}\\]+)"
+    )
+    patterns = [
+        rf"{conclusion_words}[^.\n\r]*\b{target_words}\b[^.\n\r]{{0,180}}?(?:is|equals|=)\s*{candidate}",
+        rf"\b{target_words}\b[^.\n\r]{{0,140}}?(?:is|equals|=)\s*{candidate}[^.\n\r]*{conclusion_words}",
+    ]
+    for pattern in patterns:
+        matches = re.findall(pattern, tail, flags=re.IGNORECASE)
+        if matches:
+            match = matches[-1]
+            candidate_text = match[-1] if isinstance(match, tuple) else match
+            return clean_answer(_answer_tail(candidate_text))
     return None
 
 
 def _extract_last_boxed(text: str) -> str | None:
-    marker = r"\boxed{"
-    starts = [match.start() for match in re.finditer(re.escape(marker), text)]
-    for start in reversed(starts):
-        content_start = start + len(marker)
+    starts = list(re.finditer(r"\\(?:boxed|fbox)\s*\{", text))
+    for match in reversed(starts):
+        content_start = match.end()
         depth = 1
         pos = content_start
         while pos < len(text):
@@ -130,9 +179,36 @@ def _extract_last_boxed(text: str) -> str | None:
     return None
 
 
+def _unwrap_action_text(text: str) -> str:
+    match = re.fullmatch(r"\s*(?:Analyze|Explain|Finish)\[(.*)\]\s*", str(text), flags=re.IGNORECASE | re.DOTALL)
+    return match.group(1) if match else str(text)
+
+
+def _answer_tail(answer: str) -> str:
+    answer = str(answer or "").strip()
+    if "=" in answer:
+        answer = answer.rsplit("=", 1)[-1]
+    return answer
+
+
 def clean_answer(answer: str) -> str:
     answer = str(answer or "").strip()
+    answer = re.sub(r"^\*+|\*+$", "", answer).strip()
     answer = re.sub(r"^\$+|\$+$", "", answer)
+    wrappers = [
+        (r"\\\(", r"\\\)"),
+        (r"\\\[", r"\\\]"),
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for left, right in wrappers:
+            pattern = rf"^{left}\s*(.*?)\s*{right}$"
+            match = re.fullmatch(pattern, answer, flags=re.DOTALL)
+            if match:
+                answer = match.group(1).strip()
+                changed = True
+    answer = re.sub(r"^\*+|\*+$", "", answer).strip()
     answer = answer.strip(" .,\n\t")
     return answer
 
