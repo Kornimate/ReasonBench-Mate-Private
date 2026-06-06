@@ -28,7 +28,6 @@ class OnlineLLM(Model):
 
         while total_n > 0:
             current_n = min(total_n, self.max_n)
-            total_n -= current_n
 
             while True:
                 try:
@@ -39,6 +38,14 @@ class OnlineLLM(Model):
                     print(f"Sleeping for: {max(sleep, 90)} seconds")
                     await asyncio.sleep(max(sleep, 90))
                     sleep *= 2
+
+            choices = list(completion.choices)
+            if not choices:
+                print(f"Error: provider returned 0 choices for n={current_n}")
+                print(f"Sleeping for: {max(sleep, 90)} seconds")
+                await asyncio.sleep(max(sleep, 90))
+                sleep *= 2
+                continue
 
             input_tokens, completion_tokens = count_tokens(completion)
             
@@ -53,9 +60,10 @@ class OnlineLLM(Model):
                 cached_tokens = 0
 
             results.extend(
-                (choice.message.content, input_tokens, completion_tokens / current_n, cached_tokens)
-                for choice in completion.choices
+                (choice.message.content, input_tokens, completion_tokens / len(choices), cached_tokens)
+                for choice in choices
             )
+            total_n -= len(choices)
 
         return Response(data=results)
 
