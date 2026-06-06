@@ -1,6 +1,7 @@
 import zipfile
 import os
 import datetime
+import argparse
 from omegaconf import OmegaConf
 
 def save_logs(log_dir: str, save_path: str):
@@ -19,13 +20,26 @@ def save_logs(log_dir: str, save_path: str):
 def get_file_name():
     name = input("Enter file name/id: ")
     return name.strip().replace(" ", "_")
+
+def replace_last_path_part(path: str, replacement: str) -> str:
+    parent = os.path.dirname(path.rstrip("\\/"))
+    return os.path.join(parent, replacement)
                 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target", choices=["logs", "results"], nargs="?", default="logs")
+    args = parser.parse_args()
+
     file_name = get_file_name()
     config = OmegaConf.load("actions_config.yaml")
-    LOG_DIRECTORY = config.actions.save.log_path
-    SAVE_PATH = config.actions.save.save_path
-    FILE_NAME = f"logs_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{file_name}.zip"
+    if args.target == "results":
+        LOG_DIRECTORY = replace_last_path_part(config.actions.save.log_path, "results")
+        SAVE_PATH = replace_last_path_part(config.actions.save.save_path, "Results")
+    else:
+        LOG_DIRECTORY = config.actions.save.log_path
+        SAVE_PATH = config.actions.save.save_path
+
+    FILE_NAME = f"{args.target}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{file_name}.zip"
     save_logs(
         LOG_DIRECTORY,
         os.path.join(SAVE_PATH, FILE_NAME)
