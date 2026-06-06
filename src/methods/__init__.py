@@ -9,7 +9,7 @@ from .cot import AgentDictCOT, MethodCOT
 from .cot_sc import AgentDictCoT, MethodCOT_SC
 from .heterogeneous_foa import AgentDictHeterogeneousFOA, MethodHeterogeneousFOA
 from .reagents import AgentDictReagents, MethodReagents
-from .reagents_V2comp import AgentDictReagents_V2comp, MethodReagents_V2comp
+from .reagents_v2comp import AgentDictReagents_v2comp, MethodReagents_v2comp
 from .reagents_v2tour import AgentDictReagents_v2tour, MethodReagents_v2tour
 from .reagents_aos import AgentDictReagentsAOS, MethodReagentsAOS
 from .reagents_alns import AgentDictReagentsALNS, MethodReagentsALNS

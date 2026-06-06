@@ -13,7 +13,7 @@ The base ReAgents method combines repeated state expansion, LLM-generated action
 
 ## Implemented Variants
 
-### `reagents_V2comp`
+### `reagents_v2comp`
 
 Comparative selection converts the current depth-specific ReAgents priors into pairwise comparisons between step-agent types. Each candidate agent is scored by how often it would win against the other candidates under the current prior distribution, then sampled from the resulting comparative probabilities.
 

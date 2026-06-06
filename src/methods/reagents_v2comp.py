@@ -11,7 +11,7 @@ from .reagents import DifficultyAgentSpec, MethodReagents, StepAgentSpec
 
 
 @AgentDictFactory.register
-class AgentDictReagents_V2comp(TypedDict):
+class AgentDictReagents_v2comp(TypedDict):
     evaluate: Agent
     evaluate_params: DecodingParameters
     step_agents: list[StepAgentSpec]
@@ -19,10 +19,10 @@ class AgentDictReagents_V2comp(TypedDict):
 
 
 @MethodFactory.register
-class MethodReagents_V2comp(MethodReagents):
+class MethodReagents_v2comp(MethodReagents):
     def __init__(
         self,
-        agents: AgentDictReagents_V2comp,
+        agents: AgentDictReagents_v2comp,
         model: Model,
         env: Environment,
         config: OmegaConf,
