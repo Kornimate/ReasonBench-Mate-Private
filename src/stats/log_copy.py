@@ -15,8 +15,8 @@ def logs_copy(logs_src: str, logs_dst: str):
         for file in os.listdir(src_path):
             src_file_path = os.path.join(src_path, file)
             dst_file_path = os.path.join(dst_path, file)
-            if not os.path.exists(dst_file_path):
-                shutil.copy2(src_file_path, dst_file_path)
+            # if not os.path.exists(dst_file_path):
+            shutil.copy2(src_file_path, dst_file_path)
 
     return True
 
@@ -27,6 +27,6 @@ if __name__ == "__main__":
         logs_dst=config.actions.stats.log_path_raw,
     ))
     print("Successful copy: ",logs_copy(
-        logs_src="D:\\AU\\Thesis\\Logs\\logs_2026-06-06_14-34-46_used_for_report\\raw_calls\\repeats\\gpt-4.1-nano",
+        logs_src="D:\\AU\\Thesis\\Logs\\logs_2026-06-06_14-34-46_used_for_report\\repeats\\gpt-4.1-nano",
         logs_dst=config.actions.stats.log_path_repeats,
     ))

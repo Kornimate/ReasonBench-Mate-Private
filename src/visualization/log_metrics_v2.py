@@ -119,22 +119,30 @@ def iter_log_sources(input_path: Path) -> Iterator[LogSource]:
     raise FileNotFoundError(f"Input must be a ZIP file or directory: {input_path}")
 
 
-def infer_from_path(name: str) -> tuple[str | None, str | None]:
+def infer_from_path(name: str) -> tuple[str | None, str | None, str | None, str | None, int | None]:
     parts = PurePosixPath(name.replace("\\", "/")).parts
     # Expected shape: .../repeats/<model>/<benchmark>/<method>_<split>_<repeat>.log
+    method = split = None
+    repeat = None
+    if parts:
+        stem = Path(parts[-1]).stem
+        pieces = stem.rsplit("_", 2)
+        if len(pieces) == 3 and pieces[-1].isdigit():
+            method, split, repeat_text = pieces
+            repeat = int(repeat_text)
     if len(parts) >= 3:
-        return parts[-3], parts[-2]
-    return None, None
+        return parts[-3], parts[-2], method, split, repeat
+    return None, None, method, split, repeat
 
 
 def parse_log(source: LogSource, thresholds: dict[str, float]) -> tuple[dict[str, object], list[dict[str, object]]]:
-    fallback_model, fallback_benchmark = infer_from_path(source.name)
-    method = _match_value(METHOD_PATTERN, source.text)
+    fallback_model, fallback_benchmark, fallback_method, fallback_split, fallback_repeat = infer_from_path(source.name)
+    method = _match_value(METHOD_PATTERN, source.text, fallback_method)
     benchmark = _match_value(BENCHMARK_PATTERN, source.text, fallback_benchmark)
     model = _match_value(MODEL_PATTERN, source.text, fallback_model)
-    split = _match_value(SPLIT_PATTERN, source.text)
+    split = _match_value(SPLIT_PATTERN, source.text, fallback_split)
     repeat_match = REPEAT_PATTERN.search(source.name)
-    repeat = int(repeat_match.group("repeat")) if repeat_match else 0
+    repeat = int(repeat_match.group("repeat")) if repeat_match else (fallback_repeat or 0)
 
     if not method or not benchmark:
         raise ValueError(f"Could not identify method/benchmark from {source.name}")
@@ -439,13 +447,13 @@ def _classic_interval(values: pd.Series | np.ndarray, critical_value: float) -> 
 
 def _paired_focus_differences(samples: pd.DataFrame, focus_methods: list[str], metric: str) -> pd.DataFrame:
     if len(focus_methods) != 2:
-        raise ValueError(f"Classic confidence intervals require exactly two focus methods; got {focus_methods}")
+        return pd.DataFrame()
     first, second = focus_methods
     value_column = {"normalized_quality": "score_normalized", "solved_rate": "solved"}[metric]
     selected = samples[samples["method"].isin(focus_methods)].copy()
     missing = sorted(set(focus_methods) - set(selected["method"].unique()))
     if missing:
-        raise ValueError(f"Focus method(s) absent from parsed sample scores: {missing}")
+        return pd.DataFrame()
 
     index_columns = ["model", "benchmark", "repeat", "sample_index"]
     first_values = (
@@ -474,13 +482,15 @@ def classic_focus_method_confidence_intervals(
     intervals: each benchmark contributes one mean paired difference.
     """
     if len(focus_methods) != 2:
-        raise ValueError(f"Classic confidence intervals require exactly two focus methods; got {focus_methods}")
+        return pd.DataFrame()
     critical_value = _normal_critical_value(confidence_level)
     ci_suffix = int(round(confidence_level * 100))
     rows: list[dict[str, object]] = []
     first, second = focus_methods
     for metric in ("normalized_quality", "solved_rate"):
         paired = _paired_focus_differences(samples, focus_methods, metric)
+        if paired.empty:
+            continue
         for (model, benchmark), group in paired.groupby(["model", "benchmark"], dropna=False):
             interval = _classic_interval(group["difference"], critical_value)
             rows.append(
@@ -564,6 +574,14 @@ def _slug(value: object) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_") or "unknown"
 
 
+def _prepare_plot_dir(path: Path) -> Path:
+    """Create a plot directory and remove stale PNGs from previous runs."""
+    path.mkdir(parents=True, exist_ok=True)
+    for png_path in path.glob("*.png"):
+        png_path.unlink()
+    return path
+
+
 def _format_axis(ax: plt.Axes, metric: str) -> None:
     """Format metric-specific axes without applying hard-coded visual styling."""
     if metric in {"macro_normalized_quality", "micro_normalized_quality", "overall_solved_rate",
@@ -582,15 +600,35 @@ def _format_axis(ax: plt.Axes, metric: str) -> None:
 
 def focus_benchmark_difficulty(benchmark: pd.DataFrame, focus_methods: list[str]) -> pd.DataFrame:
     """Summarize and order benchmark difficulty for selected comparison methods."""
+    columns = [
+        "model",
+        "benchmark",
+        "instances_per_method",
+        "mean_focus_normalized_quality",
+        "mean_focus_solved_rate",
+        "combined_focus_cost",
+        "combined_focus_calls",
+        "difficulty_rank_by_quality",
+    ]
+    if not focus_methods:
+        return pd.DataFrame(columns=columns)
+
     selected = benchmark[benchmark["method"].isin(focus_methods)].copy()
     missing = sorted(set(focus_methods) - set(selected["method"].unique()))
     if missing:
-        raise ValueError(f"Focus method(s) absent from parsed logs: {missing}")
+        focus_methods = [method for method in focus_methods if method not in missing]
+        selected = selected[selected["method"].isin(focus_methods)].copy()
+    if not focus_methods or selected.empty:
+        return pd.DataFrame(columns=columns)
+
     expected = len(focus_methods)
     available = selected.groupby(["model", "benchmark"])["method"].nunique()
     incomplete = available[available != expected]
     if not incomplete.empty:
-        raise ValueError(f"Not every focus method is available for all benchmarks: {incomplete.to_dict()}")
+        complete_index = available[available == expected].index
+        selected = selected.set_index(["model", "benchmark"]).loc[complete_index].reset_index()
+    if selected.empty:
+        return pd.DataFrame(columns=columns)
 
     rows: list[pd.DataFrame] = []
     for model, part in selected.groupby("model", dropna=False):
@@ -609,7 +647,7 @@ def focus_benchmark_difficulty(benchmark: pd.DataFrame, focus_methods: list[str]
         result.insert(0, "model", model)
         result.insert(1, "difficulty_rank_by_quality", np.arange(1, len(result) + 1))
         rows.append(result)
-    return pd.concat(rows, ignore_index=True)
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=columns)
 
 
 def overall_metric_specs() -> list[tuple[str, str, bool]]:
@@ -621,8 +659,7 @@ def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
     """Write one aggregate bar chart for every method-level metric."""
     metrics = overall_metric_specs()
     paths: list[Path] = []
-    overall_dir = plots_dir / "overall"
-    overall_dir.mkdir(parents=True, exist_ok=True)
+    overall_dir = _prepare_plot_dir(plots_dir / "overall")
     for model, data in summary.groupby("model", dropna=False):
         model_slug = _slug(model)
         for metric, title, ascending in metrics:
@@ -644,10 +681,42 @@ def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
     return paths
 
 
+def plot_focus_overall_metrics(summary: pd.DataFrame, focus_methods: list[str], plots_dir: Path) -> list[Path]:
+    """Write aggregate metric plots restricted to the configured focus methods."""
+    if not focus_methods:
+        return []
+
+    metrics = overall_metric_specs()
+    paths: list[Path] = []
+    output_dir = _prepare_plot_dir(plots_dir / "overall_focus_methods")
+    selected = summary[summary["method"].isin(focus_methods)].copy()
+    if selected.empty:
+        return []
+
+    for model, data in selected.groupby("model", dropna=False):
+        model_slug = _slug(model)
+        for metric, title, ascending in metrics:
+            ordered = data.sort_values(metric, ascending=ascending)
+            fig, ax = plt.subplots(figsize=(9, 5.4), constrained_layout=True)
+            ax.bar(ordered["method"], ordered[metric])
+            ax.set_title(f"{title} - Focus Methods - {model}")
+            ax.set_xlabel("Method")
+            ax.tick_params(axis="x", rotation=28)
+            _format_axis(ax, metric)
+            for idx, value in enumerate(ordered[metric]):
+                if pd.notna(value):
+                    label = f"{value:,.4f}" if isinstance(value, (float, np.floating)) else f"{value:,}"
+                    ax.text(idx, value, label, ha="center", va="bottom", fontsize=8)
+            path = output_dir / f"{model_slug}_{metric}.png"
+            fig.savefig(path, dpi=180)
+            plt.close(fig)
+            paths.append(path)
+    return paths
+
+
 def plot_pareto_views(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
     """Plot quality against both resource dimensions and label Pareto-efficient methods."""
-    pareto_dir = plots_dir / "pareto"
-    pareto_dir.mkdir(parents=True, exist_ok=True)
+    pareto_dir = _prepare_plot_dir(plots_dir / "pareto")
     paths: list[Path] = []
     for model, data in summary.groupby("model", dropna=False):
         for resource, xlabel in [("total_cost", "Total Cost (USD)"), ("total_calls", "Total Calls")]:
@@ -679,8 +748,7 @@ def plot_focus_per_benchmark(
 ) -> list[Path]:
     """Create one reduced comparison plot per benchmark for focus methods."""
     paths: list[Path] = []
-    output = plots_dir / "per_benchmark_focus_methods"
-    output.mkdir(parents=True, exist_ok=True)
+    output = _prepare_plot_dir(plots_dir / "per_benchmark_focus_methods")
     metrics = [(metric, title) for metric, title, _ in BENCHMARK_PLOT_METRICS]
     selected = benchmark[benchmark["method"].isin(focus_methods)].copy()
     for model, model_diff in difficulty.groupby("model", dropna=False):
@@ -717,6 +785,8 @@ def plot_focus_dashboard(
     """Plot all benchmarks for selected methods in one reduced dashboard."""
     dashboard_dir = plots_dir / "dashboards"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
+    for png_path in dashboard_dir.glob("*focus_methods*.png"):
+        png_path.unlink()
     paths: list[Path] = []
     metrics = [(metric, title) for metric, title, _ in BENCHMARK_PLOT_METRICS]
     selected = benchmark[benchmark["method"].isin(focus_methods)].copy()
@@ -753,6 +823,8 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
     """Create one large dashboard per metric, with one subplot per benchmark and all methods shown."""
     dashboard_dir = plots_dir / "dashboards"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
+    for png_path in dashboard_dir.glob("*all_benchmarks*.png"):
+        png_path.unlink()
     paths: list[Path] = []
     metrics = [(metric, title) for metric, title, _ in BENCHMARK_PLOT_METRICS]
     for model, part in benchmark.groupby("model", dropna=False):
@@ -786,8 +858,7 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
 
 def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
     """Create selected standalone per-benchmark plots with all methods shown."""
-    output_dir = plots_dir / "per_benchmark_all_methods"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = _prepare_plot_dir(plots_dir / "per_benchmark_all_methods")
     paths: list[Path] = []
     metrics = BENCHMARK_PLOT_METRICS
     for model, model_part in benchmark.groupby("model", dropna=False):
@@ -848,6 +919,8 @@ def plot_classic_confidence_intervals(classic_ci: pd.DataFrame, plots_dir: Path)
         return []
     output_dir = plots_dir / "confidence_intervals"
     output_dir.mkdir(parents=True, exist_ok=True)
+    for png_path in output_dir.glob("*classic_ci.png"):
+        png_path.unlink()
     paths: list[Path] = []
     ci_low_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_low")]
     ci_high_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_high")]
@@ -903,6 +976,8 @@ def plot_classic_confidence_interval_dashboard(classic_ci: pd.DataFrame, plots_d
         return []
     output_dir = plots_dir / "confidence_intervals"
     output_dir.mkdir(parents=True, exist_ok=True)
+    for png_path in output_dir.glob("*classic_ci_across_benchmarks.png"):
+        png_path.unlink()
     ci_low_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_low")]
     ci_high_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_high")]
     if not ci_low_columns or not ci_high_columns:
@@ -982,6 +1057,7 @@ def generate_plots(
     difficulty.to_csv(output_dir / "focus_methods_benchmark_difficulty.csv", index=False)
     paths: list[Path] = []
     paths.extend(plot_overall_metrics(summary, plots_dir))
+    paths.extend(plot_focus_overall_metrics(summary, focus_methods, plots_dir))
     paths.extend(plot_pareto_views(summary, plots_dir))
     paths.extend(plot_focus_per_benchmark(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))
@@ -1048,6 +1124,15 @@ def main() -> int:
     # thresholds = SOLVED_THRESHOLDS_RUNTIME if args.threshold_mode == "runtime" else SOLVED_THRESHOLDS_LEGACY
     thresholds = SOLVED_THRESHOLDS_RUNTIME
     runs, samples = load_logs(Path(config.actions.visualize.log_path), thresholds)
+    parsed_methods = set(samples["method"].unique())
+    missing_focus_methods = [method for method in focus_methods if method not in parsed_methods]
+    if missing_focus_methods:
+        print(
+            f"Warning: focus method(s) absent from parsed logs and will be skipped: {missing_focus_methods}",
+            file=sys.stderr,
+        )
+        focus_methods = [method for method in focus_methods if method in parsed_methods]
+
     benchmark = summarize_by_benchmark(runs, samples)
     for warning in validate_coverage(benchmark):
         print(f"Warning: {warning}", file=sys.stderr)
