@@ -326,7 +326,15 @@ def initial_logging(
     logger.info("\tUsing method's internal cache: %s\n", bool(args.value_cache))
 
     logger.info("Method Configuration:")
-    config = OmegaConf.load(f"scripts/configs/{args.benchmark}.yaml")[args.method]
+    configs = OmegaConf.load(f"scripts/configs/{args.benchmark}.yaml")
+    method_key = args.method.lower()
+    config = configs.get(args.method)
+    if config is None:
+        config = configs.get(method_key)
+    if config is None and method_key in ["reagents_v2comp", "reagents_v2tour"]:
+        config = configs.get("reagents")
+    if config is None:
+        raise KeyError(f"No config found for method={args.method}")
     for key, value in config.items():
         if isinstance(value, str):
             logger.info(f"\t{key}: '{value}'")
