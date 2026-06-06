@@ -68,7 +68,15 @@ async def run(args, trial, cache_path):
     )
 
     # Config for the framework hyperparameters
-    config = OmegaConf.load(f"scripts/configs/{args.benchmark}.yaml")[args.method]
+    configs = OmegaConf.load(f"scripts/configs/{args.benchmark}.yaml")
+    method_key = args.method.lower()
+    config = configs.get(args.method)
+    if config is None:
+        config = configs.get(method_key)
+    if config is None and method_key in ["reagents_v2comp", "reagents_v2tour"]:
+        config = configs.get("reagents")
+    if config is None:
+        raise KeyError(f"No config found for method={args.method}")
 
     # Environment
     environment = EnvironmentFactory.get(args.benchmark)

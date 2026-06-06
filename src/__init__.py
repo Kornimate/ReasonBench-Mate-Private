@@ -125,42 +125,43 @@ class MethodFactory:
     def get(cls, method: str, benchmark: str, params: DecodingParameters, *args, **kwargs):
         key = f"method{method}".lower()
         config = kwargs.get("config")
+        method_key = method.lower()
 
         
-        if method == "io":
+        if method_key == "io":
             agents = {
                 "step": AgentFactory.get("io", benchmark),
             }
-        elif method in ["cot", "cot_sc"]:
+        elif method_key in ["cot", "cot_sc"]:
             agents = {
                 "step": AgentFactory.get("cot", benchmark),
             }
-        elif method == "foa":
+        elif method_key == "foa":
             agents = {
                 "step": AgentFactory.get("act", benchmark),
                 "evaluate": AgentFactory.get("evaluate", benchmark),
             }
-        elif method in ["tot_bfs", "tot_dfs"]:
+        elif method_key in ["tot_bfs", "tot_dfs"]:
             agents = {
                 "step": AgentFactory.get("bfs", benchmark),
                 "evaluate": AgentFactory.get("evaluate", benchmark),
             }
-        elif method == "got":
+        elif method_key == "got":
             agents = {
                 "step": AgentFactory.get("act", benchmark),
                 "aggregate": AgentFactory.get("aggregate", benchmark),
                 "evaluate": AgentFactory.get("evaluate", benchmark),
             }
-        elif method == "rap":
+        elif method_key == "rap":
             agents = {
                 "step": AgentFactory.get("react", benchmark),
                 "evaluate": AgentFactory.get("selfevaluate", benchmark),
             }
-        elif method == "react":
+        elif method_key == "react":
             agents = {
                 "step": AgentFactory.get("react", benchmark),
             }
-        elif method == "heterogeneous_foa":
+        elif method_key == "heterogeneous_foa":
             agents = {
                 "evaluate": AgentFactory.get("evaluate", benchmark),
                 "step_agents": cls._build_step_agent_specs(
@@ -171,7 +172,7 @@ class MethodFactory:
                     default_count=getattr(config, "num_agents", 1),
                 ),
             }
-        elif method == "reagents":
+        elif method_key in ["reagents", "reagents_v2comp", "reagents_v2tour"]:
             agents = {
                 "evaluate": AgentFactory.get("evaluate", benchmark),
                 "step_agents": cls._build_step_agent_specs(
@@ -190,7 +191,7 @@ class MethodFactory:
                     else None
                 ),
             }
-        elif method == "reagents_aos" or method == "reagents_alns" or method == "reagents_fas":
+        elif method_key == "reagents_aos" or method_key == "reagents_alns":
             if getattr(config, "step_agents", None):
                 step_agents = cls._build_step_agent_specs(
                     benchmark=benchmark,

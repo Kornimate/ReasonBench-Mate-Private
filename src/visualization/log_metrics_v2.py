@@ -61,6 +61,21 @@ COST_PATTERN = re.compile(r"Cost \(total\):\s*(?P<value>\{.*?\})")
 TOKENS_PATTERN = re.compile(r"Tokens \(total\):\s*(?P<value>\{.*?\})")
 REPEAT_PATTERN = re.compile(r"_(?P<repeat>\d+)\.log$")
 
+OVERALL_PLOT_METRICS: list[tuple[str, str, bool]] = [
+    ("macro_normalized_quality", "Macro Normalized Quality", False),
+    ("macro_solved_rate", "Macro Solved Rate", False),
+    ("solved_instances", "Solved Instances", False),
+    ("total_cost", "Total Cost", True),
+    ("total_calls", "Total Calls", True),
+    ("cost_per_solved", "Cost per Solved Instance", True),
+]
+
+BENCHMARK_PLOT_METRICS: list[tuple[str, str, bool]] = [
+    ("normalized_quality", "Normalized Quality", False),
+    ("solved_rate", "Solved Rate", False),
+    ("total_cost", "Total Cost", True),
+]
+
 
 @dataclass(frozen=True)
 class LogSource:
@@ -599,23 +614,7 @@ def focus_benchmark_difficulty(benchmark: pd.DataFrame, focus_methods: list[str]
 
 def overall_metric_specs() -> list[tuple[str, str, bool]]:
     """Metrics plotted for all-method aggregate and per-benchmark views."""
-    return [
-        ("macro_normalized_quality", "Macro Normalized Quality", False),
-        ("micro_normalized_quality", "Micro Normalized Quality", False),
-        ("solved_instances", "Total Solved Instances", False),
-        ("overall_solved_rate", "Overall (Micro) Solve Rate", False),
-        ("macro_solved_rate", "Macro Solve Rate", False),
-        ("harmonic_effectiveness", "Harmonic Effectiveness", False),
-        ("total_cost", "Total Cost", True),
-        ("total_calls", "Total Calls", True),
-        ("cost_per_solved", "Cost per Solved Instance", True),
-        ("calls_per_solved", "Calls per Solved Instance", True),
-        ("quality_per_dollar", "Macro Quality per Dollar", False),
-        ("quality_per_1k_calls", "Macro Quality per 1,000 Calls", False),
-        ("solved_per_dollar", "Solved Instances per Dollar", False),
-        ("solved_per_1k_calls", "Solved Instances per 1,000 Calls", False),
-        ("performance_priority_composite_rank", "Performance-Priority Composite Rank", True),
-    ]
+    return OVERALL_PLOT_METRICS
 
 
 def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
@@ -678,16 +677,11 @@ def plot_pareto_views(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
 def plot_focus_per_benchmark(
     benchmark: pd.DataFrame, focus_methods: list[str], difficulty: pd.DataFrame, plots_dir: Path
 ) -> list[Path]:
-    """Create one four-panel comparison plot per benchmark for focus methods."""
+    """Create one reduced comparison plot per benchmark for focus methods."""
     paths: list[Path] = []
     output = plots_dir / "per_benchmark_focus_methods"
     output.mkdir(parents=True, exist_ok=True)
-    metrics = [
-        ("normalized_quality", "Normalized Quality"),
-        ("solved_rate", "Solved Rate"),
-        ("total_cost", "Total Cost"),
-        ("total_calls", "Total Calls"),
-    ]
+    metrics = [(metric, title) for metric, title, _ in BENCHMARK_PLOT_METRICS]
     selected = benchmark[benchmark["method"].isin(focus_methods)].copy()
     for model, model_diff in difficulty.groupby("model", dropna=False):
         ordered_benchmarks = model_diff.sort_values("difficulty_rank_by_quality")["benchmark"].tolist()
@@ -695,14 +689,15 @@ def plot_focus_per_benchmark(
         for rank, bench_name in enumerate(ordered_benchmarks, start=1):
             values = part[part["benchmark"] == bench_name].set_index("method").reindex(focus_methods).reset_index()
             attempts = int(values["attempted_instances"].iloc[0])
-            fig, axes = plt.subplots(2, 2, figsize=(10.5, 7.5), constrained_layout=True)
-            for ax, (metric, title) in zip(axes.flat, metrics):
+            fig, axes = plt.subplots(1, len(metrics), figsize=(13, 4.8), constrained_layout=True)
+            axes_array = np.array(axes).reshape(-1)
+            for ax, (metric, title) in zip(axes_array, metrics):
                 ax.bar(values["method"], values[metric])
                 ax.set_title(title)
                 ax.tick_params(axis="x", rotation=22)
                 _format_axis(ax, metric)
                 for i, value in enumerate(values[metric]):
-                    label = f"{value:.4f}" if metric not in {"total_calls"} else f"{int(value):,}"
+                    label = f"{value:.4f}"
                     ax.text(i, value, label, ha="center", va="bottom", fontsize=8)
             fig.suptitle(
                 f"{bench_name} — {model}\nFocus-method difficulty rank {rank}/{len(ordered_benchmarks)}; "
@@ -719,24 +714,20 @@ def plot_focus_per_benchmark(
 def plot_focus_dashboard(
     benchmark: pd.DataFrame, focus_methods: list[str], difficulty: pd.DataFrame, plots_dir: Path
 ) -> list[Path]:
-    """Plot all benchmarks for selected methods in one four-panel dashboard."""
+    """Plot all benchmarks for selected methods in one reduced dashboard."""
     dashboard_dir = plots_dir / "dashboards"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    metrics = [
-        ("normalized_quality", "Normalized Quality"),
-        ("solved_rate", "Solved Rate"),
-        ("total_cost", "Total Cost (USD)"),
-        ("total_calls", "Total Calls"),
-    ]
+    metrics = [(metric, title) for metric, title, _ in BENCHMARK_PLOT_METRICS]
     selected = benchmark[benchmark["method"].isin(focus_methods)].copy()
     for model, model_diff in difficulty.groupby("model", dropna=False):
         order = model_diff.sort_values("difficulty_rank_by_quality")["benchmark"].tolist()
         part = selected[selected["model"] == model]
         x = np.arange(len(order))
         width = min(0.8 / len(focus_methods), 0.35)
-        fig, axes = plt.subplots(2, 2, figsize=(17, 10), constrained_layout=True)
-        for ax, (metric, title) in zip(axes.flat, metrics):
+        fig, axes = plt.subplots(len(metrics), 1, figsize=(17, 12), constrained_layout=True)
+        axes_array = np.array(axes).reshape(-1)
+        for ax, (metric, title) in zip(axes_array, metrics):
             for index, method in enumerate(focus_methods):
                 vals = part[part["method"] == method].set_index("benchmark").reindex(order)[metric]
                 offset = (index - (len(focus_methods) - 1) / 2) * width
@@ -763,12 +754,7 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
     dashboard_dir = plots_dir / "dashboards"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    metrics = [
-        ("normalized_quality", "Normalized Quality"),
-        ("solved_rate", "Solved Rate"),
-        ("total_cost", "Total Cost"),
-        ("total_calls", "Total Calls"),
-    ]
+    metrics = [(metric, title) for metric, title, _ in BENCHMARK_PLOT_METRICS]
     for model, part in benchmark.groupby("model", dropna=False):
         benchmarks = sorted(part["benchmark"].unique())
         methods = sorted(part["method"].unique())
@@ -799,11 +785,11 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
 
 
 def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
-    """Create one standalone plot per benchmark/overall-style metric, with all methods shown."""
+    """Create selected standalone per-benchmark plots with all methods shown."""
     output_dir = plots_dir / "per_benchmark_all_methods"
     output_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    metrics = overall_metric_specs()
+    metrics = BENCHMARK_PLOT_METRICS
     for model, model_part in benchmark.groupby("model", dropna=False):
         methods = sorted(model_part["method"].unique())
         for bench_name, bench_part in model_part.groupby("benchmark", dropna=False):
@@ -911,6 +897,77 @@ def plot_classic_confidence_intervals(classic_ci: pd.DataFrame, plots_dir: Path)
     return paths
 
 
+def plot_classic_confidence_interval_dashboard(classic_ci: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Plot both confidence-interval metrics across benchmarks in one dashboard per model."""
+    if classic_ci.empty:
+        return []
+    output_dir = plots_dir / "confidence_intervals"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ci_low_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_low")]
+    ci_high_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_high")]
+    if not ci_low_columns or not ci_high_columns:
+        return []
+    ci_low_column = ci_low_columns[0]
+    ci_high_column = ci_high_columns[0]
+
+    metric_titles = {
+        "normalized_quality": "Normalized Quality",
+        "solved_rate": "Solved Rate",
+    }
+    paths: list[Path] = []
+    for model, model_data in classic_ci.groupby("model", dropna=False):
+        metrics = [metric for metric in ("normalized_quality", "solved_rate") if metric in set(model_data["metric"])]
+        if not metrics:
+            continue
+        benchmarks = sorted(
+            benchmark for benchmark in model_data["benchmark"].unique() if benchmark != "OVERALL_MACRO"
+        )
+        if "OVERALL_MACRO" in set(model_data["benchmark"]):
+            benchmarks.append("OVERALL_MACRO")
+        height = max(5.5, 0.5 * len(benchmarks) + 2.2)
+        fig, axes = plt.subplots(1, len(metrics), figsize=(7 * len(metrics), height), constrained_layout=True)
+        axes_array = np.array(axes).reshape(-1)
+
+        for ax, metric in zip(axes_array, metrics):
+            data = (
+                model_data[model_data["metric"] == metric]
+                .set_index("benchmark")
+                .reindex(benchmarks)
+                .reset_index()
+                .dropna(subset=["mean_difference", ci_low_column, ci_high_column])
+            )
+            if data.empty:
+                ax.axis("off")
+                continue
+            y = np.arange(len(data))
+            means = data["mean_difference"].to_numpy(dtype=float)
+            low = data[ci_low_column].to_numpy(dtype=float)
+            high = data[ci_high_column].to_numpy(dtype=float)
+            xerr = np.vstack([means - low, high - means])
+            ax.errorbar(means, y, xerr=xerr, fmt="o", capsize=4)
+            ax.axvline(0, color="black", linewidth=1, alpha=0.6)
+            ax.set_yticks(y)
+            ax.set_yticklabels(data["benchmark"])
+            ax.invert_yaxis()
+            ax.set_xlabel(f"Mean paired difference ({data['difference_direction'].iloc[0]})")
+            ax.set_title(f"{metric_titles.get(metric, metric)} 95% CI")
+            ax.grid(axis="x", alpha=0.25)
+            for idx, row in data.iterrows():
+                ax.annotate(
+                    f"{row['mean_difference']:.4f}",
+                    (row["mean_difference"], idx),
+                    xytext=(6, 0),
+                    textcoords="offset points",
+                    fontsize=8,
+                )
+        fig.suptitle(f"Confidence Intervals Across Benchmarks - {model}", fontsize=14)
+        path = output_dir / f"{_slug(model)}_classic_ci_across_benchmarks.png"
+        fig.savefig(path, dpi=180)
+        plt.close(fig)
+        paths.append(path)
+    return paths
+
+
 def generate_plots(
     output_dir: Path,
     benchmark: pd.DataFrame,
@@ -927,10 +984,10 @@ def generate_plots(
     paths.extend(plot_overall_metrics(summary, plots_dir))
     paths.extend(plot_pareto_views(summary, plots_dir))
     paths.extend(plot_focus_per_benchmark(benchmark, focus_methods, difficulty, plots_dir))
-    paths.extend(plot_focus_dashboard(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))
     paths.extend(plot_all_method_benchmark_metric_plots(benchmark, plots_dir))
     paths.extend(plot_classic_confidence_intervals(classic_ci, plots_dir))
+    paths.extend(plot_classic_confidence_interval_dashboard(classic_ci, plots_dir))
     return paths, difficulty
 
 def print_results(summary: pd.DataFrame, bootstrap: pd.DataFrame, classic_ci: pd.DataFrame) -> None:

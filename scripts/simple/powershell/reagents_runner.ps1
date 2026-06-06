@@ -1,7 +1,6 @@
 $benchmark = "mimic_rrs"
 # $method = "reagents_aos"
-# $method = "reagents_alns"
-$method = "reagents_fas"
+$method = "reagents_alns"
 $split = "single"
 
 $provider = "openai"

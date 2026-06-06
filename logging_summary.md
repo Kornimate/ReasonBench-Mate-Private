@@ -101,10 +101,3 @@ Title: `Runtime Agent Distribution Information:`
 Rows:
 - `ALNS_STEP`: `step`, width, fleet counts, current weights, probabilities, per-type agent counts.
 - `ALNS_SEGMENT`: `step`, segment scores and segment counts before weight update.
-
-## ReAgents FAS
-
-Title: `Runtime Agent Distribution Information:`
-
-Rows:
-- `FAS_STEP`: `step`, width, fleet counts, selector features. Selector features include value mean/best/variance, uncertainty, progress, stagnation, duplicate fraction, difficulty, time pressure, `p_act`, `p_react`, `n_act`, and `n_react`.

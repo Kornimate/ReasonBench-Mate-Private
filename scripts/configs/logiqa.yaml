@@ -119,29 +119,3 @@ reagents_alns:
   alns_score_improved: 2.0
   alns_score_neutral: 0.5
   alns_score_worse: 0.0
-
-reagents_fas:
-  width: 5
-  num_steps: 8
-  max_value: 1.0
-  backtrack: 0.9
-  resampling: linear
-  origin: 0.5
-  min_steps: 1
-  num_evaluations: 1
-  difficulty_agent_type: "population"
-
-  runtime_width_adaptation: true
-  difficulty_based_width_init: true
-
-  min_react_prob: 0.15
-  max_react_prob: 0.85
-  min_count_per_type: 1
-
-  beta_0: -0.4
-  beta_difficulty: 1.2
-  beta_uncertainty: 1.0
-  beta_stagnation: 0.8
-  beta_duplicate: 0.8
-  beta_progress: -0.8
-  beta_time_pressure: -0.7
