@@ -11,34 +11,12 @@ from typing import Any, Callable
 from omegaconf import OmegaConf
 
 import pandas as pd
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
 SENTENCE_PATTERN = re.compile(r"[^.!?\n]+")
-STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "for",
-    "from",
-    "in",
-    "is",
-    "it",
-    "of",
-    "on",
-    "or",
-    "that",
-    "the",
-    "to",
-    "was",
-    "were",
-    "with",
-}
+STOPWORDS = frozenset(ENGLISH_STOP_WORDS)
 
 
 @dataclass(frozen=True)
