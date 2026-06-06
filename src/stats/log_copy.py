@@ -23,10 +23,10 @@ def logs_copy(logs_src: str, logs_dst: str):
 if __name__ == "__main__":
     config = OmegaConf.load("actions_config.yaml")
     print("Successful copy: ",logs_copy(
-        logs_src="C:\\Users\\korni\\Documents\\UNI\\Files\\Logs\\auto\\logs_2026-05-23_22-13-48_asus\\raw_calls\\repeats\\gpt-4.1-nano",
+        logs_src="D:\\AU\\Thesis\\Logs\\logs_2026-06-06_14-34-46_used_for_report\\raw_calls\\repeats\\gpt-4.1-nano",
         logs_dst=config.actions.stats.log_path_raw,
     ))
     print("Successful copy: ",logs_copy(
-        logs_src="C:\\Users\\korni\\Documents\\UNI\\Files\\Logs\\auto\\logs_2026-05-23_22-13-48_asus\\repeats\\gpt-4.1-nano",
+        logs_src="D:\\AU\\Thesis\\Logs\\logs_2026-06-06_14-34-46_used_for_report\\raw_calls\\repeats\\gpt-4.1-nano",
         logs_dst=config.actions.stats.log_path_repeats,
     ))
