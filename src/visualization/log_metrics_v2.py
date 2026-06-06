@@ -382,6 +382,132 @@ def bootstrap_top_quality_difference(
     return pd.DataFrame(outputs)
 
 
+def _normal_critical_value(confidence_level: float) -> float:
+    """Return a normal critical value for common two-sided confidence levels."""
+    critical_values = {
+        0.80: 1.2815515655446004,
+        0.90: 1.6448536269514722,
+        0.95: 1.959963984540054,
+        0.98: 2.3263478740408408,
+        0.99: 2.5758293035489004,
+    }
+    rounded = round(confidence_level, 2)
+    if rounded not in critical_values:
+        raise ValueError(f"Unsupported confidence level {confidence_level}; use one of {sorted(critical_values)}")
+    return critical_values[rounded]
+
+
+def _classic_interval(values: pd.Series | np.ndarray, critical_value: float) -> dict[str, float | int]:
+    """Classic normal CI for a mean: mean +/- z * sample_std / sqrt(n)."""
+    array = np.asarray(values, dtype=float)
+    array = array[~np.isnan(array)]
+    n = int(len(array))
+    mean = float(np.mean(array)) if n else np.nan
+    if n <= 1:
+        return {
+            "n": n,
+            "mean_difference": mean,
+            "standard_error": np.nan,
+            "ci_low": np.nan,
+            "ci_high": np.nan,
+        }
+    standard_error = float(np.std(array, ddof=1) / np.sqrt(n))
+    margin = critical_value * standard_error
+    return {
+        "n": n,
+        "mean_difference": mean,
+        "standard_error": standard_error,
+        "ci_low": mean - margin,
+        "ci_high": mean + margin,
+    }
+
+
+def _paired_focus_differences(samples: pd.DataFrame, focus_methods: list[str], metric: str) -> pd.DataFrame:
+    if len(focus_methods) != 2:
+        raise ValueError(f"Classic confidence intervals require exactly two focus methods; got {focus_methods}")
+    first, second = focus_methods
+    value_column = {"normalized_quality": "score_normalized", "solved_rate": "solved"}[metric]
+    selected = samples[samples["method"].isin(focus_methods)].copy()
+    missing = sorted(set(focus_methods) - set(selected["method"].unique()))
+    if missing:
+        raise ValueError(f"Focus method(s) absent from parsed sample scores: {missing}")
+
+    index_columns = ["model", "benchmark", "repeat", "sample_index"]
+    first_values = (
+        selected[selected["method"] == first]
+        .set_index(index_columns)[value_column]
+        .astype(float)
+        .rename(first)
+    )
+    second_values = (
+        selected[selected["method"] == second]
+        .set_index(index_columns)[value_column]
+        .astype(float)
+        .rename(second)
+    )
+    paired = pd.concat([first_values, second_values], axis=1).dropna().reset_index()
+    paired["difference"] = paired[first] - paired[second]
+    return paired
+
+
+def classic_focus_method_confidence_intervals(
+    samples: pd.DataFrame, focus_methods: list[str], confidence_level: float = 0.95
+) -> pd.DataFrame:
+    """Classic paired normal confidence intervals for the two selected methods.
+
+    Positive differences favor the first selected method. Overall rows are macro
+    intervals: each benchmark contributes one mean paired difference.
+    """
+    if len(focus_methods) != 2:
+        raise ValueError(f"Classic confidence intervals require exactly two focus methods; got {focus_methods}")
+    critical_value = _normal_critical_value(confidence_level)
+    ci_suffix = int(round(confidence_level * 100))
+    rows: list[dict[str, object]] = []
+    first, second = focus_methods
+    for metric in ("normalized_quality", "solved_rate"):
+        paired = _paired_focus_differences(samples, focus_methods, metric)
+        for (model, benchmark), group in paired.groupby(["model", "benchmark"], dropna=False):
+            interval = _classic_interval(group["difference"], critical_value)
+            rows.append(
+                {
+                    "model": model,
+                    "benchmark": benchmark,
+                    "metric": metric,
+                    "method_a": first,
+                    "method_b": second,
+                    "difference_direction": f"{first} - {second}",
+                    "paired_observations": interval["n"],
+                    "mean_difference": interval["mean_difference"],
+                    "standard_error": interval["standard_error"],
+                    f"ci_{ci_suffix}_low": interval["ci_low"],
+                    f"ci_{ci_suffix}_high": interval["ci_high"],
+                    "confidence_level": confidence_level,
+                    "aggregation": "benchmark_paired_samples",
+                }
+            )
+        for model, group in paired.groupby("model", dropna=False):
+            benchmark_means = group.groupby("benchmark")["difference"].mean()
+            interval = _classic_interval(benchmark_means, critical_value)
+            rows.append(
+                {
+                    "model": model,
+                    "benchmark": "OVERALL_MACRO",
+                    "metric": metric,
+                    "method_a": first,
+                    "method_b": second,
+                    "difference_direction": f"{first} - {second}",
+                    "paired_observations": interval["n"],
+                    "mean_difference": interval["mean_difference"],
+                    "standard_error": interval["standard_error"],
+                    f"ci_{ci_suffix}_low": interval["ci_low"],
+                    f"ci_{ci_suffix}_high": interval["ci_high"],
+                    "confidence_level": confidence_level,
+                    "aggregation": "macro_benchmark_means",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def validate_coverage(benchmark: pd.DataFrame) -> list[str]:
     warnings: list[str] = []
     for model, model_part in benchmark.groupby("model", dropna=False):
@@ -403,6 +529,7 @@ def save_outputs(
     summary: pd.DataFrame,
     rankings: pd.DataFrame,
     bootstrap: pd.DataFrame,
+    classic_ci: pd.DataFrame,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     runs.to_csv(output_dir / "run_level_metrics.csv", index=False)
@@ -410,6 +537,8 @@ def save_outputs(
     benchmark.to_csv(output_dir / "benchmark_method_metrics.csv", index=False)
     summary.to_csv(output_dir / "method_summary_metrics.csv", index=False)
     rankings.to_csv(output_dir / "metric_rankings.csv", index=False)
+    if not classic_ci.empty:
+        classic_ci.to_csv(output_dir / "focus_methods_classic_confidence_intervals.csv", index=False)
     if not bootstrap.empty:
         bootstrap.to_csv(output_dir / "top_quality_bootstrap.csv", index=False)
 
@@ -727,11 +856,67 @@ def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: P
     return paths
 
 
+def plot_classic_confidence_intervals(classic_ci: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Plot selected-method paired confidence intervals as point estimates with error bars."""
+    if classic_ci.empty:
+        return []
+    output_dir = plots_dir / "confidence_intervals"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    ci_low_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_low")]
+    ci_high_columns = [column for column in classic_ci.columns if column.startswith("ci_") and column.endswith("_high")]
+    if not ci_low_columns or not ci_high_columns:
+        return []
+    ci_low_column = ci_low_columns[0]
+    ci_high_column = ci_high_columns[0]
+
+    metric_titles = {
+        "normalized_quality": "Normalized Quality Difference",
+        "solved_rate": "Solved Rate Difference",
+    }
+    for (model, metric), data in classic_ci.groupby(["model", "metric"], dropna=False):
+        ordered = data.copy()
+        ordered["is_overall"] = ordered["benchmark"].eq("OVERALL_MACRO")
+        ordered = ordered.sort_values(["is_overall", "benchmark"]).reset_index(drop=True)
+        ordered = ordered.dropna(subset=["mean_difference", ci_low_column, ci_high_column])
+        if ordered.empty:
+            continue
+
+        x = np.arange(len(ordered))
+        means = ordered["mean_difference"].to_numpy(dtype=float)
+        low = ordered[ci_low_column].to_numpy(dtype=float)
+        high = ordered[ci_high_column].to_numpy(dtype=float)
+        yerr = np.vstack([means - low, high - means])
+
+        height = max(5.2, 0.45 * len(ordered) + 2.2)
+        fig, ax = plt.subplots(figsize=(12, height), constrained_layout=True)
+        ax.errorbar(means, x, xerr=yerr, fmt="o", capsize=4)
+        ax.axvline(0, color="black", linewidth=1, alpha=0.6)
+        ax.set_yticks(x)
+        ax.set_yticklabels(ordered["benchmark"])
+        ax.invert_yaxis()
+        ax.set_xlabel(f"Mean paired difference ({ordered['difference_direction'].iloc[0]})")
+        ax.set_ylabel("Benchmark")
+        ax.set_title(f"95% Confidence Intervals - {metric_titles.get(metric, metric)} - {model}")
+        ax.grid(axis="x", alpha=0.25)
+
+        for idx, row in ordered.iterrows():
+            label = f"{row['mean_difference']:.4f}"
+            ax.annotate(label, (row["mean_difference"], idx), xytext=(6, 0), textcoords="offset points", fontsize=8)
+
+        path = output_dir / f"{_slug(model)}_{_slug(metric)}_classic_ci.png"
+        fig.savefig(path, dpi=180)
+        plt.close(fig)
+        paths.append(path)
+    return paths
+
+
 def generate_plots(
     output_dir: Path,
     benchmark: pd.DataFrame,
     summary: pd.DataFrame,
     focus_methods: list[str],
+    classic_ci: pd.DataFrame,
 ) -> tuple[list[Path], pd.DataFrame]:
     """Generate all requested plots and the focus-method difficulty table."""
     plots_dir = output_dir / "plots"
@@ -745,9 +930,10 @@ def generate_plots(
     paths.extend(plot_focus_dashboard(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))
     paths.extend(plot_all_method_benchmark_metric_plots(benchmark, plots_dir))
+    paths.extend(plot_classic_confidence_intervals(classic_ci, plots_dir))
     return paths, difficulty
 
-def print_results(summary: pd.DataFrame, bootstrap: pd.DataFrame) -> None:
+def print_results(summary: pd.DataFrame, bootstrap: pd.DataFrame, classic_ci: pd.DataFrame) -> None:
     columns = [
         "method",
         "attempted_instances",
@@ -768,6 +954,10 @@ def print_results(summary: pd.DataFrame, bootstrap: pd.DataFrame) -> None:
     if not bootstrap.empty:
         print("\nTOP-TWO PAIRED BOOTSTRAP (macro normalized quality difference)")
         print(bootstrap.to_string(index=False))
+    if not classic_ci.empty:
+        print("\nFOCUS-METHOD CLASSIC CONFIDENCE INTERVALS")
+        overall = classic_ci[classic_ci["benchmark"] == "OVERALL_MACRO"]
+        print(overall.to_string(index=False))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -795,6 +985,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     config = OmegaConf.load("actions_config.yaml")
+    focus_methods = ["heterogeneous_foa", "reagents"]
 
     # thresholds = SOLVED_THRESHOLDS_RUNTIME if args.threshold_mode == "runtime" else SOLVED_THRESHOLDS_LEGACY
     thresholds = SOLVED_THRESHOLDS_RUNTIME
@@ -805,19 +996,22 @@ def main() -> int:
     summary = summarize_by_method(benchmark)
     rankings = metric_rankings(summary)
     bootstrap = bootstrap_top_quality_difference(samples, summary, 10000, 42)
-    save_outputs(Path(config.actions.visualize.output_path), runs, samples, benchmark, summary, rankings, bootstrap)
+    classic_ci = classic_focus_method_confidence_intervals(samples, focus_methods)
+    save_outputs(Path(config.actions.visualize.output_path), runs, samples, benchmark, summary, rankings, bootstrap, classic_ci)
 
     print(f"Parsed {len(runs)} log files and {len(samples)} recorded sample scores.")
     print(f"Saved metric tables to: {Path(config.actions.visualize.output_path).resolve()}")
     
     plot_paths: list[Path] = []
-    plot_paths, _ = generate_plots(Path(config.actions.visualize.output_path).resolve(), benchmark, summary, ["heterogeneous_foa", "reagents"]) # focus methods
+    plot_paths, _ = generate_plots(
+        Path(config.actions.visualize.output_path).resolve(), benchmark, summary, focus_methods, classic_ci
+    )
 
     print(f"Parsed {len(runs)} log files and {len(samples)} recorded sample scores.")
     print(f"Saved metric tables to: {Path(config.actions.visualize.output_path).resolve()}")
     print(f"Saved {len(plot_paths)} PNG plots to: {(Path(config.actions.visualize.output_path) / 'plots').resolve()}")
 
-    print_results(summary, bootstrap)
+    print_results(summary, bootstrap, classic_ci)
     return 0
 
 
