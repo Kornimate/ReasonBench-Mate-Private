@@ -51,7 +51,7 @@ def methods_heatmap_matrix(df: pd.DataFrame, benchmark: Any) -> pd.DataFrame:
     if benchmark_df.empty:
         return pd.DataFrame()
     benchmark_df = benchmark_df.copy()
-    label_columns = [column for column in ("model", "method", "split", "repeat") if column in benchmark_df.columns]
+    label_columns = [column for column in ("method", "split", "repeat") if column in benchmark_df.columns]
     benchmark_df["run_label"] = benchmark_df.apply(lambda row: heatmap_run_label(row, label_columns), axis=1)
     plot_df = (
         benchmark_df.groupby(["sample", "run_label"], dropna=False)["solved"]

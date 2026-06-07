@@ -1165,8 +1165,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     config = OmegaConf.load("actions_config.yaml")
     output_dir = Path(config.actions.visualize.output_path) / "logv2"
-    # focus_methods = ["heterogeneous_foa", "reagents"]
-    focus_methods = ["reagents", "reagents_v2tour"]
+    focus_methods = ["heterogeneous_foa", "reagents"]
+    # focus_methods = ["reagents", "reagents_v2tour"]
 
     # thresholds = SOLVED_THRESHOLDS_RUNTIME if args.threshold_mode == "runtime" else SOLVED_THRESHOLDS_LEGACY
     thresholds = SOLVED_THRESHOLDS_RUNTIME
