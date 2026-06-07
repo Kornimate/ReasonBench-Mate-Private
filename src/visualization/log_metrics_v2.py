@@ -1164,6 +1164,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     config = OmegaConf.load("actions_config.yaml")
+    output_dir = Path(config.actions.visualize.output_path) / "logv2"
     # focus_methods = ["heterogeneous_foa", "reagents"]
     focus_methods = ["reagents", "reagents_v2tour"]
 
@@ -1186,19 +1187,19 @@ def main() -> int:
     rankings = metric_rankings(summary)
     bootstrap = bootstrap_top_quality_difference(samples, summary, 10000, 42)
     classic_ci = classic_focus_method_confidence_intervals(samples, focus_methods)
-    save_outputs(Path(config.actions.visualize.output_path), runs, samples, benchmark, summary, rankings, bootstrap, classic_ci)
+    save_outputs(output_dir, runs, samples, benchmark, summary, rankings, bootstrap, classic_ci)
 
     print(f"Parsed {len(runs)} log files and {len(samples)} recorded sample scores.")
-    print(f"Saved metric tables to: {Path(config.actions.visualize.output_path).resolve()}")
+    print(f"Saved metric tables to: {output_dir.resolve()}")
     
     plot_paths: list[Path] = []
     plot_paths, _ = generate_plots(
-        Path(config.actions.visualize.output_path).resolve(), benchmark, summary, focus_methods, classic_ci
+        output_dir.resolve(), benchmark, summary, focus_methods, classic_ci
     )
 
     print(f"Parsed {len(runs)} log files and {len(samples)} recorded sample scores.")
-    print(f"Saved metric tables to: {Path(config.actions.visualize.output_path).resolve()}")
-    print(f"Saved {len(plot_paths)} PNG plots to: {(Path(config.actions.visualize.output_path) / 'plots').resolve()}")
+    print(f"Saved metric tables to: {output_dir.resolve()}")
+    print(f"Saved {len(plot_paths)} PNG plots to: {(output_dir / 'plots').resolve()}")
 
     print_results(summary, bootstrap, classic_ci)
     return 0

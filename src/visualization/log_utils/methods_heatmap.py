@@ -50,14 +50,33 @@ def methods_heatmap_matrix(df: pd.DataFrame, benchmark: Any) -> pd.DataFrame:
     benchmark_df = df[df["benchmark"].eq(benchmark)].dropna(subset=["solved"])
     if benchmark_df.empty:
         return pd.DataFrame()
+    benchmark_df = benchmark_df.copy()
+    label_columns = [column for column in ("model", "method", "split", "repeat") if column in benchmark_df.columns]
+    benchmark_df["run_label"] = benchmark_df.apply(lambda row: heatmap_run_label(row, label_columns), axis=1)
     plot_df = (
-        benchmark_df.groupby(["sample", "method"], dropna=False)["solved"]
+        benchmark_df.groupby(["sample", "run_label"], dropna=False)["solved"]
         .mean()
         .reset_index()
-        .pivot(index="sample", columns="method", values="solved")
+        .pivot(index="sample", columns="run_label", values="solved")
         .sort_index()
     )
     return plot_df.reindex(sorted(plot_df.columns), axis=1)
+
+
+def heatmap_run_label(row: pd.Series, label_columns: list[str]) -> str:
+    parts = []
+    for column in label_columns:
+        value = row.get(column)
+        if pd.isna(value):
+            continue
+        if column == "repeat":
+            try:
+                parts.append(f"r{int(value)}")
+            except (TypeError, ValueError):
+                parts.append(f"r{value}")
+        else:
+            parts.append(str(value))
+    return " / ".join(parts) if parts else "unknown"
 
 
 def draw_methods_heatmap(axis, matrix: pd.DataFrame, title: str, show_labels: bool = True):

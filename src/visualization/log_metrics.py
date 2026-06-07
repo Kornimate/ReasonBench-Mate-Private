@@ -13,25 +13,7 @@ from omegaconf import OmegaConf
 
 import pandas as pd
 
-from .log_utils import calls_total as calls_total_metric
-from .log_utils import clocktime_per_solved as clocktime_per_solved_metric
-from .log_utils import convergence_auc as convergence_auc_metric
-from .log_utils import cost_per_solved as cost_per_solved_metric
-from .log_utils import cost_per_solved_rate_point as cost_per_solved_rate_point_metric
-from .log_utils import mean_solution_time as mean_solution_time_metric
-from .log_utils import mean_solved_solution_time as mean_solved_solution_time_metric
 from .log_utils import methods_heatmap as methods_heatmap_metric
-from .log_utils import normalized_action_entropy as normalized_action_entropy_metric
-from .log_utils import quality_mean as quality_mean_metric
-from .log_utils import raw_majority_agreement as raw_majority_agreement_metric
-from .log_utils import raw_response_consistency as raw_response_consistency_metric
-from .log_utils import score_per_dollar as score_per_dollar_metric
-from .log_utils import score_per_method_effort as score_per_method_effort_metric
-from .log_utils import solved_cost_ratio as solved_cost_ratio_metric
-from .log_utils import solved_rate as solved_rate_metric
-from .log_utils import solved_rate_cost_ratio as solved_rate_cost_ratio_metric
-from .log_utils import total_cost as total_cost_metric
-from .log_utils import total_tokens as total_tokens_metric
 from .log_utils.log_metric_common import metric_data
 
 
@@ -1103,63 +1085,23 @@ def aggregate_solved_cost_by_method(quality: pd.DataFrame, usage: pd.DataFrame) 
     return merged
 
 
-def write_outputs(logs_dir: Path, raw_dir: Path, output_dir: Path) -> None:
+def write_outputs(logs_dir: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     method_logs = iter_method_logs(logs_dir)
 
-    effort = aggregate_effort_by_method(effort_to_solution(method_logs))
-    diversity = aggregate_diversity_by_method(exploration_diversity(method_logs))
-    convergence = aggregate_convergence_by_method(convergence_auc(method_logs))
-    usage = aggregate_usage_by_method(usage_metrics(method_logs))
-    quality = aggregate_quality_by_method(quality_solution_metrics(method_logs))
     quality_samples = quality_sample_metrics(method_logs)
-    raw = aggregate_raw_by_method(raw_response_consistency(raw_dir))
-
-    effort = filter_metric_scope(effort)
-    diversity = filter_metric_scope(diversity)
-    convergence = filter_metric_scope(convergence)
-    usage = filter_metric_scope(usage)
-    quality = filter_metric_scope(quality)
     quality_samples = filter_metric_scope(quality_samples)
-    raw = filter_metric_scope(raw)
-    solved_cost = aggregate_solved_cost_by_method(quality, usage)
 
-    effort.to_csv(metric_data(output_dir, "effort_to_solution"), index=False)
-    diversity.to_csv(metric_data(output_dir, "exploration_diversity"), index=False)
-    convergence.to_csv(metric_data(output_dir, "convergence_auc"), index=False)
-    usage.to_csv(metric_data(output_dir, "usage_metrics"), index=False)
-    quality.to_csv(metric_data(output_dir, "quality_solution_metrics"), index=False)
-    solved_cost.to_csv(metric_data(output_dir, "solved_cost_metrics"), index=False)
     quality_samples.to_csv(metric_data(output_dir, "methods_heatmap"), index=False)
-    raw.to_csv(metric_data(output_dir, "raw_response_consistency"), index=False)
-
-    score_per_method_effort_metric.write(effort, output_dir)
-    normalized_action_entropy_metric.write(diversity, output_dir)
-    convergence_auc_metric.write(convergence, output_dir)
-    # calls_total_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
-    # total_tokens_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
-    # total_cost_metric.write(usage, output_dir)  # filtered: neither highlighted method is best for this metric
-    score_per_dollar_metric.write(usage, output_dir)
-    cost_per_solved_metric.write(solved_cost, output_dir)
-    solved_cost_ratio_metric.write(solved_cost, output_dir)
-    solved_rate_cost_ratio_metric.write(solved_cost, output_dir)
-    cost_per_solved_rate_point_metric.write(solved_cost, output_dir)
-    quality_mean_metric.write(quality, output_dir)
-    solved_rate_metric.write(quality, output_dir)
-    # mean_solution_time_metric.write(quality, output_dir)  # filtered: neither highlighted method is best for this metric
-    mean_solved_solution_time_metric.write(quality, output_dir)
-    clocktime_per_solved_metric.write(quality, output_dir)
     methods_heatmap_metric.write(quality_samples, output_dir)
-    raw_response_consistency_metric.write(raw, output_dir)
-    # raw_majority_agreement_metric.write(raw, output_dir)  # filtered: neither highlighted method is best for this metric
 
 
 def main() -> None:
     config = OmegaConf.load("actions_config.yaml")
+    output_dir = Path(config.actions.visualize.output_path) / "logv1"
     write_outputs(
         logs_dir=Path(config.actions.visualize.log_path),
-        raw_dir=Path(config.actions.visualize.raw_path),
-        output_dir=Path(config.actions.visualize.output_path),
+        output_dir=output_dir,
     )
 
 
