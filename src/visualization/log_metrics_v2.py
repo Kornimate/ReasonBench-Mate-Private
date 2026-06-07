@@ -714,6 +714,51 @@ def plot_focus_overall_metrics(summary: pd.DataFrame, focus_methods: list[str], 
     return paths
 
 
+def plot_basis_dashboard(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Create a compact dashboard for the core method-level result metrics."""
+    dashboard_dir = plots_dir / "dashboards"
+    dashboard_dir.mkdir(parents=True, exist_ok=True)
+    for png_path in dashboard_dir.glob("*basis_dashboard.png"):
+        png_path.unlink()
+
+    metrics = [
+        ("macro_normalized_quality", "Macro Normalized Quality"),
+        ("solved_instances", "Solved Instances"),
+        ("total_cost", "Total Cost"),
+        ("cost_per_solved", "Cost per Solved Instance"),
+    ]
+    paths: list[Path] = []
+    for model, data in summary.groupby("model", dropna=False):
+        ordered = data.sort_values(
+            ["macro_normalized_quality", "solved_instances", "total_cost"],
+            ascending=[False, False, True],
+        ).reset_index(drop=True)
+        fig, axes = plt.subplots(2, 2, figsize=(16, 10), constrained_layout=True)
+        axes_array = np.array(axes).reshape(-1)
+        for ax, (metric, title) in zip(axes_array, metrics):
+            ax.bar(ordered["method"], ordered[metric])
+            ax.set_title(title)
+            ax.tick_params(axis="x", rotation=38, labelsize=8)
+            _format_axis(ax, metric)
+            for idx, value in enumerate(ordered[metric]):
+                if pd.notna(value):
+                    if metric == "solved_instances":
+                        label = f"{int(value):,}"
+                    else:
+                        label = f"{value:,.4f}"
+                    ax.text(idx, value, label, ha="center", va="bottom", fontsize=7)
+        fig.suptitle(
+            f"Basis Metrics Dashboard - {model}\n"
+            "Methods ordered by macro normalized quality, solved instances, then total cost",
+            fontsize=14,
+        )
+        path = dashboard_dir / f"{_slug(model)}_basis_dashboard.png"
+        fig.savefig(path, dpi=180)
+        plt.close(fig)
+        paths.append(path)
+    return paths
+
+
 def plot_pareto_views(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
     """Plot quality against both resource dimensions and label Pareto-efficient methods."""
     pareto_dir = _prepare_plot_dir(plots_dir / "pareto")
@@ -1058,6 +1103,7 @@ def generate_plots(
     paths: list[Path] = []
     paths.extend(plot_overall_metrics(summary, plots_dir))
     paths.extend(plot_focus_overall_metrics(summary, focus_methods, plots_dir))
+    paths.extend(plot_basis_dashboard(summary, plots_dir))
     paths.extend(plot_pareto_views(summary, plots_dir))
     paths.extend(plot_focus_per_benchmark(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))

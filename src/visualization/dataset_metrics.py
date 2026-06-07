@@ -337,6 +337,15 @@ def corpus_lexical_diversity(texts: list[str]) -> float:
     return len(set(all_tokens)) / len(all_tokens)
 
 
+def mean_document_lexical_diversity(texts: list[str]) -> float:
+    diversities = []
+    for text in texts:
+        text_tokens = tokens(text)
+        if text_tokens:
+            diversities.append(len(set(text_tokens)) / len(text_tokens))
+    return mean(diversities) if diversities else 0.0
+
+
 def corpus_input_stats(texts: list[str]) -> dict[str, float | int]:
     all_tokens = []
     sentence_lengths = []
@@ -380,7 +389,9 @@ def aggregate_metrics(samples: pd.DataFrame, failures: list[dict[str, str]]) -> 
                     "mean_input_words": mean(group["input_word_count"]),
                     "median_answer_words": median(group["answer_word_count"]),
                     "mean_answer_words": mean(group["answer_word_count"]),
-                    "input_lexical_diversity": corpus_lexical_diversity(group["input_text"].tolist()),
+                    "total_input_tokens": int(sum(group["input_word_count"])),
+                    "input_lexical_diversity": mean_document_lexical_diversity(group["input_text"].tolist()),
+                    "corpus_input_lexical_diversity": corpus_lexical_diversity(group["input_text"].tolist()),
                     **input_stats,
                     "answer_entropy": entropy(label_counts),
                     "normalized_answer_entropy": normalized_entropy(label_counts),
@@ -399,7 +410,9 @@ def aggregate_metrics(samples: pd.DataFrame, failures: list[dict[str, str]]) -> 
                 "mean_input_words": None,
                 "median_answer_words": None,
                 "mean_answer_words": None,
+                "total_input_tokens": None,
                 "input_lexical_diversity": None,
+                "corpus_input_lexical_diversity": None,
                 "input_vocab_size": None,
                 "input_hapax_share": None,
                 "mean_input_sentence_words": None,
@@ -542,16 +555,52 @@ def plot_answer_length_vs_entropy(metrics: pd.DataFrame, output: Path) -> None:
 
 
 def plot_lexical_diversity(metrics: pd.DataFrame, output: Path) -> None:
-    df = loaded_metrics(metrics).dropna(subset=["input_lexical_diversity"])
+    df = loaded_metrics(metrics).dropna(subset=["input_vocab_size", "total_input_tokens"])
+    if df.empty:
+        return
+    df = df.sort_values("total_input_tokens", ascending=False)
+    plt = ensure_matplotlib()
+    fig, ax = plt.subplots(figsize=(9, 6))
+    sizes = [max(35, math.sqrt(value) * 3) for value in df["num_instances"]]
+    ax.scatter(
+        df["total_input_tokens"],
+        df["input_vocab_size"],
+        s=sizes,
+        color="#4c78a8",
+        alpha=0.8,
+        edgecolors="white",
+        linewidths=0.7,
+    )
+    for row in df.itertuples():
+        ax.annotate(
+            row.dataset,
+            (row.total_input_tokens, row.input_vocab_size),
+            xytext=(5, 4),
+            textcoords="offset points",
+            fontsize=7,
+        )
+    ax.set_title("Input Lexical Diversity Components")
+    ax.set_xlabel("total input tokens")
+    ax.set_ylabel("unique input tokens")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.grid(True, which="both", linewidth=0.4, alpha=0.35)
+    plt.tight_layout()
+    plt.savefig(output, dpi=180)
+    plt.close()
+
+
+def plot_lexical_diversity_ttr(metrics: pd.DataFrame, output: Path) -> None:
+    df = loaded_metrics(metrics).dropna(subset=["corpus_input_lexical_diversity"])
     if df.empty:
         return
     plt = ensure_matplotlib()
     plt.figure(figsize=(10, 5))
-    plt.plot(df["dataset"], df["input_lexical_diversity"], marker="o")
-    annotate_points(plt.gca(), df["dataset"].tolist(), df["input_lexical_diversity"].tolist())
+    plt.plot(df["dataset"], df["corpus_input_lexical_diversity"], marker="o")
+    annotate_points(plt.gca(), df["dataset"].tolist(), df["corpus_input_lexical_diversity"].tolist())
     plt.title("Input Lexical Diversity")
     plt.ylabel("type-token ratio")
-    plt.ylim(0, min(1.05, max(df["input_lexical_diversity"]) + 0.1))
+    plt.ylim(0, min(1.05, max(df["corpus_input_lexical_diversity"]) + 0.1))
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     plt.savefig(output, dpi=180)
@@ -609,7 +658,9 @@ def plot_complexity_heatmap(metrics: pd.DataFrame, output: Path) -> None:
     cols = [
         "median_input_words",
         "median_answer_words",
+        "total_input_tokens",
         "input_lexical_diversity",
+        "corpus_input_lexical_diversity",
         "input_hapax_share",
         "mean_input_sentence_words",
         "input_stopword_share",
@@ -668,6 +719,7 @@ def write_outputs(output_dir: Path, split: str) -> None:
     plot_input_length(samples, output_dir / "input_length_distribution.png")
     plot_answer_length_vs_entropy(metrics, output_dir / "answer_length_vs_entropy.png")
     plot_lexical_diversity(metrics, output_dir / "lexical_diversity.png")
+    plot_lexical_diversity_ttr(metrics, output_dir / "lexical_diversity_ttr.png")
     plot_vocabulary_profile(metrics, output_dir / "vocabulary_profile.png")
     plot_sentence_and_stopword_profile(metrics, output_dir / "sentence_stopword_profile.png")
     plot_complexity_heatmap(metrics, output_dir / "complexity_heatmap.png")
