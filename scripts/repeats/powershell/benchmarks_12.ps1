@@ -5,11 +5,11 @@ $benchmarks = @(
     "humaneval"
     "logiqa"
     "matharena"
-    "mimic_rrs"
-    "mtsamples_procedures"
-    "pubmed_qa"
     "scibench"
     "sonnetwriting"
+    "pubmed_qa"
+    "mimic_rrs"
+    "mtsamples_procedures"
 )
 
 $method = "reagents_v3"

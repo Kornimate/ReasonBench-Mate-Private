@@ -56,7 +56,8 @@ reagents_v3:
   max_width: 6
   width_top_k: 2
   width_patience: 2
-  width_improvement_threshold: 0.05
+  width_confidence_threshold: 0.70
+  width_weak_threshold: 0.50
   width_uncertainty_threshold: 0.25
   num_steps: 6
   max_value: 10
