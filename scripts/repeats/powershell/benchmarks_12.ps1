@@ -7,9 +7,9 @@ $benchmarks = @(
     "matharena"
     "scibench"
     "sonnetwriting"
-    "pubmed_qa"
-    "mimic_rrs"
-    "mtsamples_procedures"
+    # "pubmed_qa"
+    # "mimic_rrs"
+    # "mtsamples_procedures"
 )
 
 $method = "reagents_v3"
