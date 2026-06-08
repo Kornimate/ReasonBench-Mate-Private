@@ -33,6 +33,7 @@ class MethodReagents_v3(MethodReagents):
         self.max_width_bound = int(getattr(config, "max_width", self.width + self.width // 2))
         self.width_top_k = int(getattr(config, "width_top_k", 2))
         self.width_patience = int(getattr(config, "width_patience", 2))
+        self.width_value_scale = float(getattr(config, "width_value_scale", 1.0))
         self.width_confidence_threshold = float(getattr(config, "width_confidence_threshold", 0.70))
         self.width_weak_threshold = float(getattr(config, "width_weak_threshold", 0.50))
         self.width_uncertainty_threshold = float(getattr(config, "width_uncertainty_threshold", 0.25))
@@ -57,7 +58,7 @@ class MethodReagents_v3(MethodReagents):
         return max(min_width, min(max_width, int(width)))
 
     def _value_scale(self, values: list[float]) -> float:
-        return max(1.0, float(self.max_value), *(abs(value) for value in values))
+        return max(1.0, self.width_value_scale)
 
     def _update_width(self, old_records: list[SearchRecord], new_records: list[SearchRecord], width: int) -> int:
         if not self.features["runtime_width_adaptation"] or not old_records or not new_records:
@@ -77,30 +78,28 @@ class MethodReagents_v3(MethodReagents):
         normalized_best = best_new / value_scale
         normalized_topk = topk_new / value_scale
         normalized_spread = spread_new / value_scale
-        terminal_count = sum(1 for record in new_records if self.env.is_final(record.state))
-
         old_width = width
         decision = "keep"
         plateau_steps = self._width_plateau_steps.get()
 
-        if terminal_count == len(new_records):
-            plateau_steps = 0
-            width = self.min_width
-            decision = "shrink_all_terminal"
-        elif normalized_spread >= self.width_uncertainty_threshold:
-            plateau_steps = 0
-            decision = "keep_uncertain"
-        elif normalized_best >= self.width_confidence_threshold:
+        if normalized_spread >= self.width_uncertainty_threshold:
+            plateau_steps += 1
+            if plateau_steps >= self.width_patience:
+                width += 1
+                decision = "grow_uncertain_plateau"
+            else:
+                decision = "keep_uncertain_waiting"
+        elif normalized_topk >= self.width_confidence_threshold:
             plateau_steps = 0
             width -= 1
             decision = "shrink_confident"
         elif normalized_topk < self.width_weak_threshold:
             plateau_steps += 1
-            if plateau_steps >= self.width_patience:
+            if plateau_steps >= self.width_patience and width < self.width:
                 width += 1
-                decision = "grow_weak_plateau"
+                decision = "grow_weak_to_base"
             else:
-                decision = "keep_weak_waiting"
+                decision = "keep_weak"
         else:
             plateau_steps = 0
             decision = "keep_moderate"
@@ -122,11 +121,11 @@ class MethodReagents_v3(MethodReagents):
             "normalized_best": normalized_best,
             "normalized_topk": normalized_topk,
             "normalized_spread": normalized_spread,
-            "terminal_count": terminal_count,
             "plateau_steps": plateau_steps,
             "decision": decision,
             "min_width": self.min_width,
             "max_width": self.max_width_bound,
+            "value_scale_config": self.width_value_scale,
             "confidence_threshold": self.width_confidence_threshold,
             "weak_threshold": self.width_weak_threshold,
             "uncertainty_threshold": self.width_uncertainty_threshold,
