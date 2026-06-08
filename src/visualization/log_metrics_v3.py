@@ -124,6 +124,27 @@ def terminal_scores(payload: dict[str, Any]) -> list[float]:
     return result
 
 
+def int_list(payload: dict[str, Any], key: str) -> list[int]:
+    values = payload.get(key, [])
+    if not isinstance(values, list):
+        return []
+    result = []
+    for value in values:
+        try:
+            result.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def numeric_payload_value(payload: dict[str, Any], key: str) -> float | None:
+    value = payload.get(key)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_trace_logs(log_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     rows: list[dict[str, Any]] = []
     candidate_rows: list[dict[str, Any]] = []
@@ -155,6 +176,12 @@ def parse_trace_logs(log_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             state_depths = payload.get("state_depths", [])
             if not isinstance(state_depths, list):
                 state_depths = []
+            width = numeric_payload_value(payload, "width")
+            next_width = numeric_payload_value(payload, "next_width")
+            width_change = abs(next_width - width) if width is not None and next_width is not None else 0.0
+            terminal_indices = set(int_list(payload, "terminal_indices"))
+            solved_indices = set(int_list(payload, "solved_indices"))
+            terminal_pruned_count = len(terminal_indices - solved_indices)
             idx = payload.get("idx")
             step = int(payload.get("step", 0))
             rows.append(
@@ -187,6 +214,10 @@ def parse_trace_logs(log_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                     "resampled_count": int(payload.get("resampled_count", 0) or 0),
                     "replacement_count": int(payload.get("replacement_count", 0) or 0),
                     "failed_count": int(payload.get("failed_count", 0) or 0),
+                    "width": width,
+                    "next_width": next_width,
+                    "width_change": width_change,
+                    "terminal_pruned_count": terminal_pruned_count,
                     "visited_count": int(payload.get("visited_count", 0) or 0),
                     "state_depth_mean": float(np.mean([float(v) for v in state_depths])) if state_depths else np.nan,
                 }
@@ -224,6 +255,8 @@ def build_mechanism_summary(trace: pd.DataFrame, benchmark_metrics: pd.DataFrame
             total_resampled=("resampled_count", "sum"),
             total_replacements=("replacement_count", "sum"),
             total_failures=("failed_count", "sum"),
+            total_width_change=("width_change", "sum"),
+            total_terminal_pruned=("terminal_pruned_count", "sum"),
             mean_state_depth=("state_depth_mean", "mean"),
         )
     )
@@ -250,8 +283,19 @@ def build_mechanism_summary(trace: pd.DataFrame, benchmark_metrics: pd.DataFrame
     )
     summary["drift_hits"] = summary["placeholder_hits"] + summary["elaboration_hits"]
     summary["drift_hits_per_trace"] = summary["drift_hits"] / summary["trace_events"].replace(0, np.nan)
-    summary["selection_noise"] = summary["total_resampled"] + summary["total_replacements"] + summary["total_failures"]
-    summary["selection_noise_per_trace"] = summary["selection_noise"] / summary["trace_events"].replace(0, np.nan)
+    summary["explicit_selection_churn"] = (
+        summary["total_resampled"] + summary["total_replacements"] + summary["total_failures"]
+    )
+    summary["explicit_selection_churn_per_trace"] = summary["explicit_selection_churn"] / summary[
+        "trace_events"
+    ].replace(0, np.nan)
+    summary["structural_selection_churn"] = summary["total_width_change"] + summary["total_terminal_pruned"]
+    summary["selection_churn_evidence"] = (
+        summary["explicit_selection_churn"] + summary["structural_selection_churn"]
+    )
+    summary["selection_churn_evidence_per_trace"] = summary["selection_churn_evidence"] / summary[
+        "trace_events"
+    ].replace(0, np.nan)
     summary["branching_excess"] = (summary["mean_unique_actions"] - 1.0).clip(lower=0)
     summary["candidate_score_dispersion"] = summary["mean_terminal_score_std"].fillna(0)
     summary["cost_per_trace_event"] = summary["total_cost"] / summary["trace_events"].replace(0, np.nan)
@@ -349,13 +393,13 @@ def plot_mtsamples_drift_evidence(output_dir: Path, summary: pd.DataFrame) -> li
             "Candidate branching",
             "Distinct candidates per trace",
         )
-        noise = part["selection_noise_per_trace"]
+        noise = part["selection_churn_evidence_per_trace"]
         _bar(
             axes[1],
             labels,
             noise.to_list(),
-            "Selection noise",
-            "Resampled + replaced + failed per trace",
+            "Selection churn evidence",
+            "Explicit churn + width/pruned per trace",
         )
         ax2 = axes[1].twinx()
         ax2.plot(np.arange(len(labels)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
@@ -373,7 +417,7 @@ def plot_mtsamples_drift_evidence(output_dir: Path, summary: pd.DataFrame) -> li
     return paths
 
 
-def plot_scibench_selection_evidence(output_dir: Path, summary: pd.DataFrame) -> list[Path]:
+def plot_scibench_disagreement_evidence(output_dir: Path, summary: pd.DataFrame) -> list[Path]:
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
@@ -384,27 +428,18 @@ def plot_scibench_selection_evidence(output_dir: Path, summary: pd.DataFrame) ->
         part = data[data["benchmark"].eq(bench)].set_index("method").reindex(methods)
         labels = [method_label(method) for method in methods]
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5.2), constrained_layout=True)
-        _bar(axes[0], labels, part["mean_unique_actions"].to_list(), "Candidate disagreement", "Unique answers/steps")
-        ax2 = axes[0].twinx()
+        fig, ax = plt.subplots(figsize=(8, 5.2), constrained_layout=True)
+        _bar(ax, labels, part["mean_unique_actions"].to_list(), "Candidate disagreement", "Distinct candidates per trace")
+        ax2 = ax.twinx()
         ax2.plot(np.arange(len(labels)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
         ax2.set_ylabel("Solved rate")
         ax2.set_ylim(0, 1.05)
 
-        noise = part["total_resampled"] + part["total_replacements"] + part["total_failures"]
-        _bar(
-            axes[1],
-            labels,
-            noise.to_list(),
-            "Population-selection noise",
-            "Resampled + replaced + failed traces",
-        )
-
         fig.suptitle(
-            f"SciBench: Evidence for Noisy Population Selection - {model}",
+            f"SciBench: Evidence for Candidate Disagreement - {model}",
             fontsize=13,
         )
-        path = plots_dir / f"{_slug(model)}_scibench_selection_noise_evidence.png"
+        path = plots_dir / f"{_slug(model)}_scibench_candidate_disagreement_evidence.png"
         fig.savefig(path, dpi=180)
         plt.close(fig)
         paths.append(path)
@@ -419,7 +454,7 @@ def plot_mechanism_evidence(output_dir: Path, summary: pd.DataFrame) -> list[Pat
     paths: list[Path] = []
     paths.extend(plot_option_coverage_evidence(output_dir, summary))
     paths.extend(plot_mtsamples_drift_evidence(output_dir, summary))
-    paths.extend(plot_scibench_selection_evidence(output_dir, summary))
+    paths.extend(plot_scibench_disagreement_evidence(output_dir, summary))
     return paths
 
 
@@ -438,21 +473,27 @@ def write_report(output_dir: Path, summary: pd.DataFrame) -> None:
         "logiqa": "Constrained options reward breadth-first option coverage.",
         "mtsamples_procedures": "Direct extraction is hurt when methods branch into extra candidates and selection work.",
         "pubmed_qa": "Constrained medical QA again rewards broader option coverage.",
-        "scibench": "Single-chain CoT avoids noisy population selection.",
+        "scibench": "Single-chain CoT avoids disagreement across competing partial derivations.",
     }
     for (model, benchmark), part in summary.groupby(["model", "benchmark"], dropna=False):
         methods = _ordered_methods(part, benchmark)
         ordered = part.set_index("method").reindex(methods).dropna(how="all").reset_index()
         lines.extend([f"## {benchmark}", "", idea_labels[benchmark], ""])
+        sixth_metric_label = "Candidate Disagreement" if benchmark == "scibench" else "Selection Churn/Trace"
         lines.append(
-            "| Method | Quality | Solved Rate | Candidate Coverage | Branching Excess | Drift/Trace | Selection Noise/Trace | Winner Gap |"
+            f"| Method | Quality | Solved Rate | Candidate Coverage | Branching Excess | Drift/Trace | {sixth_metric_label} | Winner Gap |"
         )
         lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
         for _, row in ordered.iterrows():
+            sixth_metric = (
+                row["candidate_coverage"]
+                if benchmark == "scibench"
+                else row["selection_churn_evidence_per_trace"]
+            )
             lines.append(
                 f"| `{row['method']}` | {row['normalized_quality']:.3f} | {row['solved_rate']:.3f} | "
                 f"{row['candidate_coverage']:.2f} | {row['branching_excess']:.2f} | "
-                f"{row['drift_hits_per_trace']:.2f} | {row['selection_noise_per_trace']:.2f} | "
+                f"{row['drift_hits_per_trace']:.2f} | {sixth_metric:.2f} | "
                 f"{row['quality_gap_vs_winner']:.3f} |"
             )
         lines.append("")
@@ -490,16 +531,16 @@ def write_latex_report(output_dir: Path, summary: pd.DataFrame) -> None:
 \subsection{{Failure-mode evidence from execution traces}}
 \label{{sec:failure-mode-trace-evidence}}
 
-To test whether the benchmark-level failures correspond to the proposed mechanisms, I extracted structured trace events from the repeat logs.  Each event records the candidates produced at a reasoning step, the number of distinct candidates, terminal scores when available, and method-specific search signals such as resampling and replacement.  I use four derived metrics.  \emph{{Candidate coverage}} is the mean number of distinct answer candidates generated per trace event; for LogiQA it is the mean number of distinct multiple-choice options among \texttt{{a}}, \texttt{{b}}, \texttt{{c}}, and \texttt{{d}}, while for PubMedQA it is the mean number of distinct answer candidates.  \emph{{Branching excess}} is $\max(0, \text{{unique candidates}} - 1)$, so it measures how far a method moves away from a single direct answer.  \emph{{Drift per trace}} is the number of placeholder or elaborative-management terms per trace event, using markers such as ``plan'', ``follow-up'', ``monitor'', ``recommend'', and bracketed placeholders.  \emph{{Selection noise per trace}} is $(\text{{resampled}}+\text{{replaced}}+\text{{failed}})/\text{{trace events}}$, which measures how often population search had to discard, resample, or replace candidates.
+To test whether the benchmark-level failures correspond to the proposed mechanisms, I extracted structured trace events from the repeat logs.  Each event records the candidates produced at a reasoning step, the number of distinct candidates, terminal scores when available, and method-specific search signals.  I use four derived metrics.  \emph{{Candidate coverage}} is the mean number of distinct answer candidates generated per trace event; for LogiQA it is the mean number of distinct multiple-choice options among \texttt{{a}}, \texttt{{b}}, \texttt{{c}}, and \texttt{{d}}, while for PubMedQA it is the mean number of distinct answer candidates.  \emph{{Branching excess}} is $\max(0, \text{{unique candidates}} - 1)$, so it measures how far a method moves away from a single direct answer.  \emph{{Drift per trace}} is the number of placeholder or elaborative-management terms per trace event, using markers such as ``plan'', ``follow-up'', ``monitor'', ``recommend'', and bracketed placeholders.  \emph{{Selection churn evidence per trace}} is $(\text{{resampled}}+\text{{replaced}}+\text{{failed}}+|\text{{next width}}-\text{{width}}|+\text{{terminal pruned}})/\text{{trace events}}$.  The first three terms capture explicit discard/resampling events logged by methods such as \texttt{{heterogeneous\_foa}}; the last two terms capture the corresponding ReAgents structure, where the logs record adaptive population width and terminal candidates removed from the continuing pool instead of explicit resampled indices.
 
 \paragraph{{LogiQA and PubMedQA.}}
 The LogiQA and PubMedQA failures both support the same candidate-coverage mechanism: when the task has a small answer space, \texttt{{tot\_bfs}} benefits from exploring more alternatives before selection.  On LogiQA, \texttt{{tot\_bfs}} reaches normalised quality {_fmt(logiqa_tot["normalized_quality"], 3)} and solved rate {_fmt(logiqa_tot["solved_rate"], 3)}, compared with {_fmt(logiqa_reagents["normalized_quality"], 3)}/{_fmt(logiqa_reagents["solved_rate"], 3)} for \texttt{{reagents}} and {_fmt(logiqa_hfoa["normalized_quality"], 3)}/{_fmt(logiqa_hfoa["solved_rate"], 3)} for \texttt{{heterogeneous\_foa}}.  The trace evidence is direct: \texttt{{tot\_bfs}} covers {_fmt(logiqa_tot["candidate_coverage"])} distinct multiple-choice options per trace event, while \texttt{{reagents}} covers {_fmt(logiqa_reagents["candidate_coverage"])} and \texttt{{heterogeneous\_foa}} covers {_fmt(logiqa_hfoa["candidate_coverage"])}.  PubMedQA shows the same pattern with answer-candidate coverage: \texttt{{tot\_bfs}} reaches quality {_fmt(pubmed_tot["normalized_quality"], 3)} and solved rate {_fmt(pubmed_tot["solved_rate"], 3)}, while both focus methods reach quality {_fmt(pubmed_reagents["normalized_quality"], 3)} and solved rate {_fmt(pubmed_reagents["solved_rate"], 3)}.  In the traces, \texttt{{tot\_bfs}} generates {_fmt(pubmed_tot["candidate_coverage"])} distinct candidates per event, compared with {_fmt(pubmed_reagents["candidate_coverage"])} for \texttt{{reagents}} and {_fmt(pubmed_hfoa["candidate_coverage"])} for \texttt{{heterogeneous\_foa}}.  Thus, in both benchmarks, the observed failure of the two focus methods is paired with lower candidate coverage than the winning breadth-first method.
 
 \paragraph{{MTSamples Procedures.}}
-The MTSamples Procedures failure is different: the direct \texttt{{io}} method is best, with quality {_fmt(mts_io["normalized_quality"], 3)} and solved rate {_fmt(mts_io["solved_rate"], 3)}, compared with {_fmt(mts_reagents["normalized_quality"], 3)}/{_fmt(mts_reagents["solved_rate"], 3)} for \texttt{{reagents}} and {_fmt(mts_hfoa["normalized_quality"], 3)}/{_fmt(mts_hfoa["solved_rate"], 3)} for \texttt{{heterogeneous\_foa}}.  I use only two trace metrics for this claim.  First, \emph{{candidate coverage}} measures how many distinct candidate outputs a method creates per trace event.  The direct method has coverage {_fmt(mts_io["candidate_coverage"])}, while \texttt{{reagents}} has {_fmt(mts_reagents["candidate_coverage"])} and \texttt{{heterogeneous\_foa}} has {_fmt(mts_hfoa["candidate_coverage"])}.  Second, \emph{{selection noise per trace}} measures resampling, replacement, and failed-candidate events per trace.  This is {_fmt(mts_io["selection_noise_per_trace"])} for \texttt{{io}}, {_fmt(mts_reagents["selection_noise_per_trace"])} for \texttt{{reagents}}, and {_fmt(mts_hfoa["selection_noise_per_trace"])} for \texttt{{heterogeneous\_foa}}.  These metrics support a deterministic but narrow interpretation: \texttt{{reagents}} fails despite producing substantially more candidate variants than direct \texttt{{io}}, and \texttt{{heterogeneous\_foa}} fails while also adding substantial selection noise.  Thus, for this extraction-style task, the log evidence supports over-processing through extra branching, with additional selection churn for \texttt{{heterogeneous\_foa}}.
+The MTSamples Procedures failure is different: the direct \texttt{{io}} method is best, with quality {_fmt(mts_io["normalized_quality"], 3)} and solved rate {_fmt(mts_io["solved_rate"], 3)}, compared with {_fmt(mts_reagents["normalized_quality"], 3)}/{_fmt(mts_reagents["solved_rate"], 3)} for \texttt{{reagents}} and {_fmt(mts_hfoa["normalized_quality"], 3)}/{_fmt(mts_hfoa["solved_rate"], 3)} for \texttt{{heterogeneous\_foa}}.  I use only two trace metrics for this claim.  First, \emph{{candidate coverage}} measures how many distinct candidate outputs a method creates per trace event.  The direct method has coverage {_fmt(mts_io["candidate_coverage"])}, while \texttt{{reagents}} has {_fmt(mts_reagents["candidate_coverage"])} and \texttt{{heterogeneous\_foa}} has {_fmt(mts_hfoa["candidate_coverage"])}.  Second, \emph{{selection churn evidence per trace}} measures how much the population is revised through explicit resampling/replacement/failure events or, for \texttt{{reagents}}, through width adaptation and terminal-candidate pruning.  This is {_fmt(mts_io["selection_churn_evidence_per_trace"])} for \texttt{{io}}, {_fmt(mts_reagents["selection_churn_evidence_per_trace"])} for \texttt{{reagents}}, and {_fmt(mts_hfoa["selection_churn_evidence_per_trace"])} for \texttt{{heterogeneous\_foa}}.  These two metrics support a deterministic interpretation: both focus methods fail while producing more candidate variants and more population revision than direct \texttt{{io}}.  Thus, for this extraction-style task, the log evidence supports over-processing through extra branching and selection churn.
 
 \paragraph{{SciBench.}}
-SciBench supports the single-chain reasoning hypothesis.  \texttt{{cot}} is the winner, with quality {_fmt(sci_cot["normalized_quality"], 3)} and solved rate {_fmt(sci_cot["solved_rate"], 3)}, while \texttt{{reagents}} reaches {_fmt(sci_reagents["normalized_quality"], 3)}/{_fmt(sci_reagents["solved_rate"], 3)} and \texttt{{heterogeneous\_foa}} reaches {_fmt(sci_hfoa["normalized_quality"], 3)}/{_fmt(sci_hfoa["solved_rate"], 3)}.  The trace evidence shows why population selection is risky here: \texttt{{cot}} has candidate coverage {_fmt(sci_cot["candidate_coverage"])} and zero selection noise, whereas \texttt{{reagents}} produces {_fmt(sci_reagents["candidate_coverage"])} distinct candidates per trace event and \texttt{{heterogeneous\_foa}} produces {_fmt(sci_hfoa["candidate_coverage"])} with selection noise {_fmt(sci_hfoa["selection_noise_per_trace"])} per trace.  For calculation-heavy scientific problems, these competing partial derivations create more alternatives to select among, but the logs show that this extra branching does not improve accuracy; it coincides with a quality gap of {_fmt(abs(sci_reagents["quality_gap_vs_winner"]), 3)} for \texttt{{reagents}} and {_fmt(abs(sci_hfoa["quality_gap_vs_winner"]), 3)} for \texttt{{heterogeneous\_foa}}.
+SciBench supports the single-chain reasoning hypothesis.  \texttt{{cot}} is the winner, with quality {_fmt(sci_cot["normalized_quality"], 3)} and solved rate {_fmt(sci_cot["solved_rate"], 3)}, while \texttt{{reagents}} reaches {_fmt(sci_reagents["normalized_quality"], 3)}/{_fmt(sci_reagents["solved_rate"], 3)} and \texttt{{heterogeneous\_foa}} reaches {_fmt(sci_hfoa["normalized_quality"], 3)}/{_fmt(sci_hfoa["solved_rate"], 3)}.  The trace evidence supports a candidate-disagreement interpretation: \texttt{{cot}} produces {_fmt(sci_cot["candidate_coverage"])} distinct candidate per trace event, whereas \texttt{{reagents}} produces {_fmt(sci_reagents["candidate_coverage"])} distinct candidates and \texttt{{heterogeneous\_foa}} produces {_fmt(sci_hfoa["candidate_coverage"])}.  For calculation-heavy scientific problems, these competing partial derivations create multiple alternatives to choose among.  The logs therefore show that extra candidate disagreement does not beat a coherent single reasoning chain; it coincides with a quality gap of {_fmt(abs(sci_reagents["quality_gap_vs_winner"]), 3)} for \texttt{{reagents}} and {_fmt(abs(sci_hfoa["quality_gap_vs_winner"]), 3)} for \texttt{{heterogeneous\_foa}}.
 """.strip()
     (output_dir / "failure_mechanism_evidence.tex").write_text(latex + "\n", encoding="utf-8")
 
