@@ -72,7 +72,7 @@ async def run(args, cache_path):
     config = configs.get(args.method)
     if config is None:
         config = configs.get(method_key)
-    if config is None and method_key in ["reagents_v2comp", "reagents_v2tour"]:
+    if config is None and method_key in ["reagents_v2comp", "reagents_v2tour", "reagents_v3"]:
         config = configs.get("reagents")
     if config is None:
         raise KeyError(f"No config found for method={args.method}")

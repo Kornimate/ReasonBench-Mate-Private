@@ -50,6 +50,30 @@ reagents:
     - agent_type: "react"
       num_agents: 2
 
+reagents_v3:
+  width: 4
+  min_width: 2
+  max_width: 6
+  width_top_k: 2
+  width_patience: 2
+  width_improvement_threshold: 0.05
+  width_uncertainty_threshold: 0.25
+  num_steps: 6
+  max_value: 10
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 1
+  num_evaluations: 3
+  origin: 30
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 2
+
 tot_bfs:
   num_selections: 3
   num_steps: 6

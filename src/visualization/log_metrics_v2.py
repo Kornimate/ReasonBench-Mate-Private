@@ -20,8 +20,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Runtime solved thresholds from the benchmark environments.
-# src/tasks/mimic_rrs/environment.py: FINAL_SCORE_THRESHOLD = 4.0
-# src/tasks/mtsamples_procedures/environment.py: FINAL_SCORE_THRESHOLD = 3.8
+# src/tasks/mimic_rrs/environment.py: FINAL_SCORE_THRESHOLD = 3.5
+# src/tasks/mtsamples_procedures/environment.py: FINAL_SCORE_THRESHOLD = 3.5
 SOLVED_THRESHOLDS_RUNTIME: dict[str, float] = {
     "game24": 1.0,
     "hle": 1.0,
@@ -29,18 +29,15 @@ SOLVED_THRESHOLDS_RUNTIME: dict[str, float] = {
     "humaneval": 1.0,
     "logiqa": 1.0,
     "matharena": 1.0,
-    "mimic_rrs": 4.0,
-    "mtsamples_procedures": 3.8,
+    "mimic_rrs": 3.5,
+    "mtsamples_procedures": 3.5,
     "pubmed_qa": 1.0,
     "scibench": 1.0,
     "sonnetwriting": 1.0,
 }
 
-# Retained only to reproduce the current visualization/log_metrics.py behavior.
 SOLVED_THRESHOLDS_LEGACY: dict[str, float] = {
     **SOLVED_THRESHOLDS_RUNTIME,
-    "mimic_rrs": 3.5,
-    "mtsamples_procedures": 3.5,
 }
 
 # Scores for medical summarization are grader scores on a five-point scale.
@@ -75,6 +72,18 @@ BENCHMARK_PLOT_METRICS: list[tuple[str, str, bool]] = [
     ("solved_rate", "Solved Rate", False),
     ("total_cost", "Total Cost", True),
 ]
+
+TASK_GROUPS: dict[str, list[str]] = {
+    "mathematical_logical": ["game24", "logiqa", "matharena"],
+    "reasoning_coding": ["hle", "hotpotqa", "humaneval", "scibench", "sonnetwriting"],
+    "medical": ["mimic_rrs", "mtsamples_procedures", "pubmed_qa"],
+}
+
+TASK_GROUP_TITLES: dict[str, str] = {
+    "mathematical_logical": "Mathematical and Logical",
+    "reasoning_coding": "Reasoning and Coding",
+    "medical": "Medical",
+}
 
 
 @dataclass(frozen=True)
@@ -584,8 +593,17 @@ def _prepare_plot_dir(path: Path) -> Path:
 
 def _format_axis(ax: plt.Axes, metric: str) -> None:
     """Format metric-specific axes without applying hard-coded visual styling."""
-    if metric in {"macro_normalized_quality", "micro_normalized_quality", "overall_solved_rate",
-                  "macro_solved_rate", "harmonic_effectiveness", "normalized_quality", "solved_rate"}:
+    if metric in {
+        "macro_normalized_quality",
+        "micro_normalized_quality",
+        "overall_solved_rate",
+        "macro_solved_rate",
+        "harmonic_effectiveness",
+        "normalized_quality",
+        "solved_rate",
+        "mean_normalized_quality",
+        "mean_solved_rate",
+    }:
         ax.set_ylim(0, 1.05)
     if "cost" in metric or "dollar" in metric:
         ax.set_ylabel("USD")
@@ -958,6 +976,61 @@ def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: P
     return paths
 
 
+def plot_task_group_dashboards(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Create one dashboard per task group with quality and solved-rate summaries."""
+    output_dir = _prepare_plot_dir(plots_dir / "task_groups")
+    paths: list[Path] = []
+    metrics = [
+        ("mean_normalized_quality", "Mean Normalized Quality"),
+        ("mean_solved_rate", "Mean Solved Rate"),
+    ]
+    for model, model_part in benchmark.groupby("model", dropna=False):
+        methods = sorted(model_part["method"].unique())
+        for group_key, benchmarks in TASK_GROUPS.items():
+            group_part = model_part[model_part["benchmark"].isin(benchmarks)]
+            if group_part.empty:
+                continue
+            values = (
+                group_part.groupby("method", as_index=False)
+                .agg(
+                    mean_normalized_quality=("normalized_quality", "mean"),
+                    mean_solved_rate=("solved_rate", "mean"),
+                    benchmark_count=("benchmark", "nunique"),
+                )
+                .set_index("method")
+                .reindex(methods)
+                .dropna(subset=["mean_normalized_quality", "mean_solved_rate"], how="all")
+                .reset_index()
+            )
+            print(values)
+            if values.empty:
+                continue
+            fig, axes = plt.subplots(1, 2, figsize=(15, 5.8), constrained_layout=True)
+            axes_array = np.array(axes).reshape(-1)
+            for ax, (metric, title) in zip(axes_array, metrics):
+                ordered = values.sort_values(metric, ascending=False, na_position="last").reset_index(drop=True)
+                ax.bar(ordered["method"], ordered[metric])
+                ax.set_title(title)
+                ax.set_xlabel("Method")
+                ax.tick_params(axis="x", rotation=35, labelsize=8)
+                _format_axis(ax, metric)
+                for idx, value in enumerate(ordered[metric]):
+                    if pd.notna(value):
+                        ax.text(idx, value, f"{value:,.4f}", ha="center", va="bottom", fontsize=7)
+
+            present_benchmarks = [benchmark for benchmark in benchmarks if benchmark in set(group_part["benchmark"])]
+            fig.suptitle(
+                f"{TASK_GROUP_TITLES.get(group_key, group_key.replace('_', ' ').title())} - {model}\n"
+                f"Benchmarks: {', '.join(present_benchmarks)}",
+                fontsize=13,
+            )
+            path = output_dir / f"{_slug(model)}_{group_key}.png"
+            fig.savefig(path, dpi=180)
+            plt.close(fig)
+            paths.append(path)
+    return paths
+
+
 def plot_classic_confidence_intervals(classic_ci: pd.DataFrame, plots_dir: Path) -> list[Path]:
     """Plot selected-method paired confidence intervals as point estimates with error bars."""
     if classic_ci.empty:
@@ -1108,6 +1181,7 @@ def generate_plots(
     paths.extend(plot_focus_per_benchmark(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))
     paths.extend(plot_all_method_benchmark_metric_plots(benchmark, plots_dir))
+    paths.extend(plot_task_group_dashboards(benchmark, plots_dir))
     paths.extend(plot_classic_confidence_intervals(classic_ci, plots_dir))
     paths.extend(plot_classic_confidence_interval_dashboard(classic_ci, plots_dir))
     return paths, difficulty

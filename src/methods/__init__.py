@@ -11,5 +11,6 @@ from .heterogeneous_foa import AgentDictHeterogeneousFOA, MethodHeterogeneousFOA
 from .reagents import AgentDictReagents, MethodReagents
 from .reagents_v2comp import AgentDictReagents_v2comp, MethodReagents_v2comp
 from .reagents_v2tour import AgentDictReagents_v2tour, MethodReagents_v2tour
+from .reagents_v3 import AgentDictReagents_v3, MethodReagents_v3
 from .reagents_aos import AgentDictReagentsAOS, MethodReagentsAOS
 from .reagents_alns import AgentDictReagentsALNS, MethodReagentsALNS

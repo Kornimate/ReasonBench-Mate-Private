@@ -172,7 +172,7 @@ class MethodFactory:
                     default_count=getattr(config, "num_agents", 1),
                 ),
             }
-        elif method_key in ["reagents", "reagents_v2comp", "reagents_v2tour"]:
+        elif method_key in ["reagents", "reagents_v2comp", "reagents_v2tour", "reagents_v3"]:
             agents = {
                 "evaluate": AgentFactory.get("evaluate", benchmark),
                 "step_agents": cls._build_step_agent_specs(
