@@ -59,6 +59,27 @@ def test_extract_final_answer_handles_final_result_label():
     assert extract_final_answer(response) == "881"
 
 
+def test_extract_final_answer_handles_equation_inside_finish():
+    response = "Finish[j + k = 881]"
+
+    assert extract_final_answer(response) == "881"
+    assert answers_match(extract_final_answer(response), "881")
+
+
+def test_extract_final_answer_unwraps_simple_bracketed_labelled_answer():
+    response = "Analyze[The calculation gives j + k = 881.\n\n**Answer:**\n\n[881]]"
+
+    assert extract_final_answer(response) == "881"
+    assert answers_match(extract_final_answer(response), "881")
+
+
+def test_extract_final_answer_unwraps_one_sided_bracket_from_action_wrapper():
+    response = "Analyze[The calculation gives j + k = 881.\n\n**Answer:**\n\n[881]"
+
+    assert extract_final_answer(response) == "881"
+    assert answers_match(extract_final_answer(response), "881")
+
+
 def test_extract_final_answer_does_not_finish_setup_step():
     response = (
         "Analyze[The problem asks for the number of points where exactly 2 lines intersect. "

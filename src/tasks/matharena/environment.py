@@ -91,17 +91,19 @@ def extract_final_answer(text: str) -> str | None:
     if finish_match:
         finish = finish_match.group(1)
         nested = extract_final_answer(finish)
-        return nested if nested is not None else clean_answer(finish)
+        return nested if nested is not None else clean_answer(_answer_tail(finish))
 
-    boxed = _extract_last_boxed(text)
+    answer_text = _unwrap_action_text(text)
+
+    boxed = _extract_last_boxed(answer_text)
     if boxed is not None:
         return clean_answer(boxed)
 
-    labelled = _extract_labelled_answer(text)
+    labelled = _extract_labelled_answer(answer_text)
     if labelled is not None:
         return labelled
 
-    concluded = _extract_concluded_answer(text)
+    concluded = _extract_concluded_answer(answer_text)
     if concluded is not None:
         return concluded
 
@@ -209,6 +211,13 @@ def clean_answer(answer: str) -> str:
                 answer = match.group(1).strip()
                 changed = True
     answer = re.sub(r"^\*+|\*+$", "", answer).strip()
+    bracket_match = re.fullmatch(r"\[\s*([^\[\]]+?)\s*\]", answer, flags=re.DOTALL)
+    if bracket_match:
+        answer = bracket_match.group(1).strip()
+    else:
+        bracket_match = re.fullmatch(r"\[\s*([^\[\]]+?)\s*", answer, flags=re.DOTALL)
+        if bracket_match:
+            answer = bracket_match.group(1).strip()
     answer = answer.strip(" .,\n\t")
     return answer
 
