@@ -7,13 +7,13 @@ $benchmarks = @(
     "matharena"
     "scibench"
     "sonnetwriting"
-    # "pubmed_qa"
-    # "mimic_rrs"
-    # "mtsamples_procedures"
+    "pubmed_qa"
+    "mimic_rrs"
+    "mtsamples_procedures"
 )
 
 $method = "reagents_v3_hierarchical"
-$split = "single"
+$split = "n[50]"
 $repeats = 1
 
 $provider = "openai"
