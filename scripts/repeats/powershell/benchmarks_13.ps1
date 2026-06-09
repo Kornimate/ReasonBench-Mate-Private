@@ -12,7 +12,7 @@ $benchmarks = @(
     # "mtsamples_procedures"
 )
 
-$method = "reagents_v3_base"
+$method = "reagents_v3_aos"
 $split = "single"
 $repeats = 1
 
