@@ -321,6 +321,87 @@ class AgentReactGame24(Agent):
         return proposals
 
 
+def build_role_prompt_game24(template: str, state: StateGame24) -> str:
+    if state.current_state == "24":
+        return (
+            prompts.expression.format(input=state.puzzle)
+            + "Steps:\n"
+            + "\n".join(state.steps)
+        )
+    return template.format(input=get_current_numbers(state))
+
+
+def parse_game24_role_response(response: str) -> str:
+    response = response.strip()
+    if "Action:" in response:
+        response = response.split("Action:")[-1].strip()
+    lines = [line.strip() for line in response.splitlines() if line.strip()]
+    return lines[-1] if lines else response
+
+
+@AgentFactory.register
+class AgentCriticGame24(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateGame24,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        responses = await model.request(
+            prompt=build_role_prompt_game24(prompts.critic, state),
+            n=n,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return [parse_game24_role_response(response) for response in responses]
+
+
+@AgentFactory.register
+class AgentCorrectorGame24(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateGame24,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        responses = await model.request(
+            prompt=build_role_prompt_game24(prompts.corrector, state),
+            n=n,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return [parse_game24_role_response(response) for response in responses]
+
+
+@AgentFactory.register
+class AgentPlannerGame24(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateGame24,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        responses = await model.request(
+            prompt=build_role_prompt_game24(prompts.planner, state),
+            n=n,
+            request_id=request_id,
+            namespace=namespace,
+            params=params,
+        )
+        return [parse_game24_role_response(response) for response in responses]
+
+
 @AgentFactory.register
 class AgentRapGame24(Agent):
     """

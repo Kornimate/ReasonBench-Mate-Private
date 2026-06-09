@@ -74,6 +74,51 @@ Question: {question}
 Possible Actions:
 """
 
+critic = """Solve a question answering task as a verifier. Inspect the current trajectory for missing evidence, unsupported jumps, repeated searches, or premature answers. Then return exactly one immediate next action that best verifies or fixes the trajectory.
+
+Action can be one of:
+(1) Search[entity]
+(2) Lookup[keyword]
+(3) Finish[answer]
+
+Return only the action, with no explanation.
+
+Question: {question}
+{current_state}
+
+Verified action:
+"""
+
+corrector = """Solve a question answering task as a corrector. Repair the current trajectory by returning exactly one immediate next action that fixes a bad search/lookup direction, fills missing evidence, or gives a corrected final answer.
+
+Action can be one of:
+(1) Search[entity]
+(2) Lookup[keyword]
+(3) Finish[answer]
+
+Return only the action, with no explanation.
+
+Question: {question}
+{current_state}
+
+Corrected action:
+"""
+
+planner = """Solve a question answering task as a planner. Decompose the remaining evidence need internally, then return exactly one immediate next action that follows the best plan.
+
+Action can be one of:
+(1) Search[entity]
+(2) Lookup[keyword]
+(3) Finish[answer]
+
+Return only the action, with no explanation.
+
+Question: {question}
+{current_state}
+
+Planned action:
+"""
+
 # adapted based on: https://github.com/noahshinn/reflexion/blob/218cf0ef1df84b05ce379dd4a8e47f17766733a0/hotpotqa_runs/prompts.py#L90
 evaluate = '''Analyze the trajectories of a solution to a question answering
 task. The trajectories are labeled by environmental observations about the situation, thoughts that can reason about the current situation and actions that can be three types: 

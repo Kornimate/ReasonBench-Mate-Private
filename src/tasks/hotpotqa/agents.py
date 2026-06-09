@@ -280,6 +280,83 @@ class AgentReactHotpotQA(Agent):
         return react_actions
 
 
+def parse_hotpotqa_role_actions(response: str) -> List[str]:
+    pattern = r"(\b\w+)\s*(\[[^\]]*\])"
+    actions = [join_matches(match)[0] for match in re.findall(pattern, response) if match]
+    return actions[:1] if actions else [response.strip()]
+
+
+async def act_with_hotpotqa_role_prompt(
+    template: str,
+    model: Model,
+    state: StateHotpotQA,
+    n: int,
+    namespace: str,
+    request_id: str,
+    params: DecodingParameters,
+) -> List[str]:
+    prompt = template.format(question=state.puzzle, current_state=state.current_state)
+    responses = await model.request(
+        prompt=prompt,
+        n=n,
+        request_id=request_id,
+        namespace=namespace,
+        params=params,
+    )
+    proposals = []
+    for response in responses:
+        proposals.extend(parse_hotpotqa_role_actions(response))
+    return proposals[:n]
+
+
+@AgentFactory.register
+class AgentCriticHotpotQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHotpotQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_hotpotqa_role_prompt(
+            prompts.critic, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentCorrectorHotpotQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHotpotQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_hotpotqa_role_prompt(
+            prompts.corrector, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentPlannerHotpotQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHotpotQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_hotpotqa_role_prompt(
+            prompts.planner, model, state, n, namespace, request_id, params
+        )
+
+
 @AgentFactory.register
 class AgentSelfEvaluateHotpotQA(Agent):
     """

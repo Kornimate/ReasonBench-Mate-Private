@@ -132,6 +132,195 @@ reagents_v3_hierarchical:
   bandit_max_arm_depth: 5
   bandit_stop_on_solved: true
 
+reagents_v4_1_aos:
+  width: 6
+  num_steps: 7
+  max_value: 60
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 80
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 2
+    - agent_type: "critic"
+      num_agents: 2
+  operator_policy: "ucb"
+  operator_reward_mode: "delta"
+  operator_reward_min: 0
+  operator_reward_max: 60
+  operator_ucb_c: 2.0
+  operator_min_count_per_type: 1
+
+reagents_v4_2_aos:
+  width: 6
+  num_steps: 7
+  max_value: 60
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 80
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 2
+    - agent_type: "critic"
+      num_agents: 1
+    - agent_type: "corrector"
+      num_agents: 1
+  operator_policy: "ucb"
+  operator_reward_mode: "delta"
+  operator_reward_min: 0
+  operator_reward_max: 60
+  operator_ucb_c: 2.0
+  operator_min_count_per_type: 1
+
+reagents_v4_3_aos:
+  width: 6
+  num_steps: 7
+  max_value: 60
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 80
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 1
+    - agent_type: "critic"
+      num_agents: 1
+    - agent_type: "corrector"
+      num_agents: 1
+    - agent_type: "planner"
+      num_agents: 1
+  operator_policy: "ucb"
+  operator_reward_mode: "delta"
+  operator_reward_min: 0
+  operator_reward_max: 60
+  operator_ucb_c: 2.0
+  operator_min_count_per_type: 1
+
+reagents_v4_1_hierarchical:
+  width: 5
+  num_steps: 6
+  max_value: 60
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 80
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 2
+    - agent_type: "critic"
+      num_agents: 1
+  trajectory_policy: "thompson"
+  operator_policy: "ucb"
+  bandit_num_arms: 6
+  bandit_budget: 72
+  trajectory_reward_mode: "score"
+  operator_reward_mode: "delta"
+  bandit_reward_min: 0
+  bandit_reward_max: 60
+  trajectory_discount: 0.95
+  operator_ucb_c: 2.0
+  operator_min_count_per_type: 1
+  bandit_max_arm_depth: 5
+  bandit_stop_on_solved: true
+
+reagents_v4_2_hierarchical:
+  width: 5
+  num_steps: 6
+  max_value: 60
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 80
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 2
+    - agent_type: "react"
+      num_agents: 1
+    - agent_type: "critic"
+      num_agents: 1
+    - agent_type: "corrector"
+      num_agents: 1
+  trajectory_policy: "thompson"
+  operator_policy: "ucb"
+  bandit_num_arms: 6
+  bandit_budget: 72
+  trajectory_reward_mode: "score"
+  operator_reward_mode: "delta"
+  bandit_reward_min: 0
+  bandit_reward_max: 60
+  trajectory_discount: 0.95
+  operator_ucb_c: 2.0
+  operator_min_count_per_type: 1
+  bandit_max_arm_depth: 5
+  bandit_stop_on_solved: true
+
+reagents_v4_3_hierarchical:
+  width: 5
+  num_steps: 6
+  max_value: 60
+  k: 2
+  alpha: 0.2
+  backtrack: 0.5
+  resampling: "linear_filtered"
+  min_steps: 4
+  num_evaluations: 3
+  origin: 80
+  difficulty_agent_type: "population"
+  step_agents:
+    - agent_type: "act"
+      num_agents: 1
+    - agent_type: "react"
+      num_agents: 1
+    - agent_type: "critic"
+      num_agents: 1
+    - agent_type: "corrector"
+      num_agents: 1
+    - agent_type: "planner"
+      num_agents: 1
+  trajectory_policy: "thompson"
+  operator_policy: "ucb"
+  bandit_num_arms: 6
+  bandit_budget: 72
+  trajectory_reward_mode: "score"
+  operator_reward_mode: "delta"
+  bandit_reward_min: 0
+  bandit_reward_max: 60
+  trajectory_discount: 0.95
+  operator_ucb_c: 2.0
+  operator_min_count_per_type: 1
+  bandit_max_arm_depth: 5
+  bandit_stop_on_solved: true
+
 tot_bfs:
   num_selections: 3
   num_steps: 4

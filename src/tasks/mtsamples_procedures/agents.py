@@ -212,6 +212,74 @@ class AgentReactMTSamplesProcedures(Agent):
         return [parse_single_draft(response) for response in responses]
 
 
+async def act_with_mtsamples_role_prompt(
+    template: str,
+    model: Model,
+    state: StateMTSamplesProcedures,
+    n: int,
+    namespace: str,
+    request_id: str,
+    params: DecodingParameters,
+) -> List[str]:
+    prompt = build_prompt(template, state, state.current_state)
+    responses = await model.request(
+        prompt=prompt,
+        n=n,
+        request_id=request_id,
+        namespace=namespace,
+        params=params,
+    )
+    return [parse_single_draft(response) for response in responses]
+
+
+@AgentFactory.register
+class AgentCriticMTSamplesProcedures(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateMTSamplesProcedures,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_mtsamples_role_prompt(
+            prompts.critic, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentCorrectorMTSamplesProcedures(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateMTSamplesProcedures,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_mtsamples_role_prompt(
+            prompts.corrector, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentPlannerMTSamplesProcedures(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateMTSamplesProcedures,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_mtsamples_role_prompt(
+            prompts.planner, model, state, n, namespace, request_id, params
+        )
+
+
 @AgentFactory.register
 class AgentEvaluateMTSamplesProcedures(Agent):
     @staticmethod

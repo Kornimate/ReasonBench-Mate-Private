@@ -282,6 +282,86 @@ class AgentReactHumanEval(Agent):
         react_actions = [r.strip() for r in responses]
         return react_actions
 
+
+async def act_with_humaneval_role_prompt(
+    template: str,
+    model: Model,
+    state: StateHumanEval,
+    n: int,
+    namespace: str,
+    request_id: str,
+    params: DecodingParameters,
+) -> List[str]:
+    language = "py" if "def" in state.puzzle else "rs"
+    instruct = prompts.SIMPLE_CHAT_INSTRUCTION_V2.format(lang=language)
+    user_prompt = template.format(
+        lang=language,
+        prompt=state.puzzle,
+        current_state=state.current_state,
+    )
+    responses = await model.request(
+        prompt=[
+            {"role": "system", "content": instruct},
+            {"role": "user", "content": user_prompt},
+        ],
+        n=n,
+        request_id=request_id,
+        namespace=namespace,
+        params=params,
+    )
+    return [
+        response.strip().removeprefix("```python").removesuffix("```").strip()
+        for response in responses
+    ]
+
+
+@AgentFactory.register
+class AgentCriticHumanEval(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHumanEval,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_humaneval_role_prompt(
+            prompts.critic, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentCorrectorHumanEval(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHumanEval,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_humaneval_role_prompt(
+            prompts.corrector, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentPlannerHumanEval(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHumanEval,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_humaneval_role_prompt(
+            prompts.planner, model, state, n, namespace, request_id, params
+        )
+
 @AgentFactory.register
 class AgentSelfEvaluateHumanEval(Agent):
     """

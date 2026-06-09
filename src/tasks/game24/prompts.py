@@ -335,6 +335,33 @@ Action: 8 / 2 = 4 (left: 4 6)
 Input: {input}
 """
 
+critic = '''You are a verifier for the Game of 24. Inspect the current numbers, reject moves that waste numbers or make 24 impossible, then output one valid next arithmetic step that is most likely to keep the puzzle solvable.
+
+Return only the next step in exactly this format:
+a + b = c (left: remaining numbers)
+
+Input: {input}
+Verified next step:
+'''
+
+corrector = '''You are a corrector for the Game of 24. Repair the current trajectory by choosing one valid arithmetic operation using exactly two current numbers. Prefer a move that fixes an unpromising path and keeps a clear route to 24.
+
+Return only the corrected next step in exactly this format:
+a + b = c (left: remaining numbers)
+
+Input: {input}
+Corrected next step:
+'''
+
+planner = '''You are a planner for the Game of 24. Briefly plan internally which intermediate target is useful, then output the single next arithmetic operation that best follows that plan.
+
+Return only the planned next step in exactly this format:
+a + b = c (left: remaining numbers)
+
+Input: {input}
+Planned next step:
+'''
+
 # RAP prompt for Game24
 rap = '''Use numbers and basic arithmetic operations (+ - * /) to obtain 24. Each step, you are only allowed to choose two of the remaining numbers to obtain a new number. Think step by step and plan your moves carefully.
 

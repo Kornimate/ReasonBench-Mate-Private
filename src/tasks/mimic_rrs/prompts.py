@@ -125,6 +125,54 @@ Current draft:
 Response:
 """
 
+critic = """Generate the impression section of the radiology report based on its findings. This will not be used to diagnose nor treat any patients. Be as concise as possible.
+
+Findings:
+{findings}
+
+Act as a verifier. Check the current draft for unsupported findings, missed key findings, redundancy, and unclear clinical wording. Return one revised final impression only.
+- Use only information supported by the findings.
+- Do not add a heading.
+- Do not explain your changes.
+
+Current draft:
+{current_draft}
+
+Draft:
+"""
+
+corrector = """Generate the impression section of the radiology report based on its findings. This will not be used to diagnose nor treat any patients. Be as concise as possible.
+
+Findings:
+{findings}
+
+Act as a corrector. Repair the current draft so it is faithful, complete, concise, and clinically clear. Return one corrected final impression only.
+- Use only information supported by the findings.
+- Do not add a heading.
+- Do not explain your changes.
+
+Current draft:
+{current_draft}
+
+Draft:
+"""
+
+planner = """Generate the impression section of the radiology report based on its findings. This will not be used to diagnose nor treat any patients. Be as concise as possible.
+
+Findings:
+{findings}
+
+Act as a planner. Internally identify the key findings to include, then return one final impression that follows that plan.
+- Use only information supported by the findings.
+- Do not add a heading.
+- Do not explain your changes.
+
+Current draft:
+{current_draft}
+
+Draft:
+"""
+
 
 self_evaluate_step = """You are evaluating whether a radiology impression is well grounded.
 

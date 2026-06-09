@@ -18,3 +18,4 @@ groq
 lazykey
 python-dotenv
 poethepoet
+setuptools

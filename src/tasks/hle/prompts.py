@@ -78,6 +78,33 @@ Problem: {problem}
 Solution: {existing_steps}
 Extracted answer:'''
 
+critic = '''Given a problem and existing solution steps, act as a verifier. Identify the most likely gap, contradiction, unsupported claim, or calculation risk in the current trajectory, then propose exactly one next step that resolves or tests that issue.
+
+The output format is limited to: "Next step: ..." where ... is one concise step. If the existing steps already justify the answer, output "The final answer is: $...$".
+
+Problem: {problem}
+Existing steps:
+{existing_steps}
+Output:'''
+
+corrector = '''Given a problem and existing solution steps, act as a corrector. Revise the trajectory by producing exactly one next step that repairs an error, fills a missing calculation, removes an unsupported claim, or gives the corrected final answer.
+
+The output format is limited to: "Next step: ..." where ... is one concise corrected step. If the solution is complete, output "The final answer is: $...$".
+
+Problem: {problem}
+Existing steps:
+{existing_steps}
+Output:'''
+
+planner = '''Given a problem and existing solution steps, act as a planner. Decompose the remaining work internally and output exactly one high-value next step that follows the plan without over-solving prematurely.
+
+The output format is limited to: "Next step: ..." where ... is one concise planned step. If the existing steps are sufficient, output "The final answer is: $...$".
+
+Problem: {problem}
+Existing steps:
+{existing_steps}
+Output:'''
+
 evaluate = '''Your task is to assess whether the provided solution steps can successfully solve the given science/mathematics problem and output a score.
 The score should be a decimal between 0 and 1. If all the provided steps are incorrect (every step is wrong), the score should be 0. If all steps are correct and the final answer is successfully calculated, the score should be 1. The more errors there are in the steps, the closer the score should be to 0. The closer the steps are to the final correct answer, the closer the score should be to 1.
 A score equal to or greater than 0.9 can only be given if the answer has already been calculated to a specific value. If the thought process is complete but the answer is not computed, or only the mathematical expression is written without solving it, the score must be below 0.9.

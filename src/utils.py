@@ -337,6 +337,12 @@ def initial_logging(
         "reagents_v3_base",
         "reagents_v3_aos",
         "reagents_v3_hierarchical",
+        "reagents_v4_1_aos",
+        "reagents_v4_2_aos",
+        "reagents_v4_3_aos",
+        "reagents_v4_1_hierarchical",
+        "reagents_v4_2_hierarchical",
+        "reagents_v4_3_hierarchical",
     ]:
         config = configs.get("reagents")
     if config is None:

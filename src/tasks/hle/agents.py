@@ -254,6 +254,76 @@ class AgentReactHLE(Agent):
         react_actions = [r.strip() for r in responses]
         return react_actions
 
+
+async def act_with_hle_role_prompt(
+    template: str,
+    model: Model,
+    state: StateHLE,
+    n: int,
+    namespace: str,
+    request_id: str,
+    params: DecodingParameters,
+) -> List[str]:
+    existing_steps = "\n".join(state.steps) if len(state.steps) > 0 else "None\n"
+    prompt = template.format(problem=state.question, existing_steps=existing_steps)
+    responses = await model.request(
+        prompt=prompt,
+        n=n,
+        request_id=request_id,
+        namespace=namespace,
+        params=params,
+    )
+    proposals = [r.strip().split("\n")[:5] for r in responses]
+    return [parse_proposal(r, state.step_n, existing_steps) for r in proposals]
+
+
+@AgentFactory.register
+class AgentCriticHLE(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHLE,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_hle_role_prompt(
+            prompts.critic, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentCorrectorHLE(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHLE,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_hle_role_prompt(
+            prompts.corrector, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentPlannerHLE(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateHLE,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_hle_role_prompt(
+            prompts.planner, model, state, n, namespace, request_id, params
+        )
+
 @AgentFactory.register
 class AgentEvaluateHLE(Agent):
     """

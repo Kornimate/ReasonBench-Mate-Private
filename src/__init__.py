@@ -179,6 +179,12 @@ class MethodFactory:
             "reagents_v3_base",
             "reagents_v3_aos",
             "reagents_v3_hierarchical",
+            "reagents_v4_1_aos",
+            "reagents_v4_2_aos",
+            "reagents_v4_3_aos",
+            "reagents_v4_1_hierarchical",
+            "reagents_v4_2_hierarchical",
+            "reagents_v4_3_hierarchical",
         ]:
             agents = {
                 "evaluate": AgentFactory.get("evaluate", benchmark),

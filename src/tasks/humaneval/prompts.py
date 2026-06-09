@@ -114,6 +114,39 @@ Current implementation:
 Remember, you are only allowed to perform one step and that can be either a Thought or an Action.
 """
 
+critic = """You are a programming assistant acting as a verifier for {lang} code. You will be given a function signature, docstring, and current implementation. Find likely correctness, edge-case, or syntax issues, then return a corrected full implementation.
+
+Respond with only {lang} code. Restate the function signature exactly as given.
+
+Function signature and docstring:
+{prompt}
+
+Current implementation:
+{current_state}
+"""
+
+corrector = """You are a programming assistant acting as a corrector for {lang} code. Repair the current implementation so it satisfies the signature and docstring, handles edge cases, and is syntactically valid.
+
+Respond with only {lang} code. Restate the function signature exactly as given.
+
+Function signature and docstring:
+{prompt}
+
+Current implementation:
+{current_state}
+"""
+
+planner = """You are a programming assistant acting as a planner for {lang} code. Internally plan the algorithm and edge cases, then return a full implementation that follows that plan.
+
+Respond with only {lang} code. Restate the function signature exactly as given.
+
+Function signature and docstring:
+{prompt}
+
+Current implementation:
+{current_state}
+"""
+
 self_evaluate_step = '''You are evaluating a reasoning step in a code generation task. Given the function signature, current implementation, and the proposed step, determine if this step is correct and logical. Consider:
 1. Is the code syntactically correct?
 2. Does it follow the function's requirements?

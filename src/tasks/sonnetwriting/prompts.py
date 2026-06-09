@@ -349,6 +349,42 @@ Current reasoning:
 ---
 '''
 
+critic = '''You are a verifier for sonnet writing. Check the current sonnet draft against the required rhyme scheme, required words, coherence, and poetic quality. Then return a revised complete sonnet and nothing else.
+
+The sonnet must end with ---END-OF-SONNET---.
+
+Task: {input}
+
+Current draft:
+{current_state}
+
+Revised sonnet:
+'''
+
+corrector = '''You are a corrector for sonnet writing. Repair the current sonnet draft so it better satisfies the task, includes the required words naturally, and follows the requested rhyme scheme. Return only the corrected complete sonnet.
+
+The sonnet must end with ---END-OF-SONNET---.
+
+Task: {input}
+
+Current draft:
+{current_state}
+
+Corrected sonnet:
+'''
+
+planner = '''You are a planner for sonnet writing. Internally plan the rhyme scheme, required words, and theme, then return a complete sonnet that follows that plan. Return only the sonnet.
+
+The sonnet must end with ---END-OF-SONNET---.
+
+Task: {input}
+
+Current draft:
+{current_state}
+
+Planned sonnet:
+'''
+
 # Self-evaluation prompts for SonnetWriting
 self_evaluate_step = '''You are evaluating a step in sonnet writing. Given the task requirements and the current step, determine if this step is correct and contributes to a good sonnet. Consider:
 1. Does it follow the required rhyme scheme?

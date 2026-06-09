@@ -104,6 +104,48 @@ Current draft:
 Response:
 """
 
+critic = """Here are information about a patient, return a reasonable treatment plan for the patient.
+Patient Notes: {cleaned_text}
+
+Act as a verifier. Check the current draft for unsupported medical details, missing salient information, and poor fit as the missing text. Return one revised final draft only.
+- Use only information supported by the note.
+- Do not add a heading.
+- Do not explain your changes.
+
+Current draft:
+{current_draft}
+
+Draft:
+"""
+
+corrector = """Here are information about a patient, return a reasonable treatment plan for the patient.
+Patient Notes: {cleaned_text}
+
+Act as a corrector. Repair the current draft so it is faithful to the note, clinically useful, concise, and complete as the missing text. Return one corrected draft only.
+- Use only information supported by the note.
+- Do not add a heading.
+- Do not explain your changes.
+
+Current draft:
+{current_draft}
+
+Draft:
+"""
+
+planner = """Here are information about a patient, return a reasonable treatment plan for the patient.
+Patient Notes: {cleaned_text}
+
+Act as a planner. Internally identify what the missing text should cover, then return one final draft that follows that plan.
+- Use only information supported by the note.
+- Do not add a heading.
+- Do not explain your changes.
+
+Current draft:
+{current_draft}
+
+Draft:
+"""
+
 self_evaluate_step = """You are evaluating whether a draft for missing medical-note text is well grounded.
 
 Note:

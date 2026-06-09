@@ -87,6 +87,39 @@ Current answer:
 {current_answer}
 """
 
+critic = """{instance_input}
+
+Answer A for yes, B for no or C for maybe.
+Act as a verifier: check whether the current answer is directly supported by the evidence, then return only the best corrected answer choice.
+
+Current answer:
+{current_answer}
+
+Answer:
+"""
+
+corrector = """{instance_input}
+
+Answer A for yes, B for no or C for maybe.
+Act as a corrector: repair the current answer if it is unsupported, contradicted, or too uncertain. Return only one answer choice.
+
+Current answer:
+{current_answer}
+
+Answer:
+"""
+
+planner = """{instance_input}
+
+Answer A for yes, B for no or C for maybe.
+Act as a planner: internally identify the evidence needed for yes/no/maybe, then return only the best answer choice.
+
+Current answer:
+{current_answer}
+
+Answer:
+"""
+
 
 self_evaluate_step = """{instance_input}
 

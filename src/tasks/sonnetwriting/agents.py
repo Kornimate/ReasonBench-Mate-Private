@@ -290,6 +290,81 @@ class AgentReactSonnetWriting(Agent):
         return actions
 
 
+def ensure_sonnet_separator(text: str) -> str:
+    sonnet = remove_parentheses(text.split("---")[-1].strip()).strip() if "---" in text else text.strip()
+    if not sonnet.endswith("---END-OF-SONNET---"):
+        sonnet = sonnet + "\n---END-OF-SONNET---"
+    return sonnet
+
+
+async def act_with_sonnet_role_prompt(
+    template: str,
+    model: Model,
+    state: StateSonnetWriting,
+    n: int,
+    namespace: str,
+    request_id: str,
+    params: DecodingParameters,
+) -> List[str]:
+    prompt = template.format(input=state.puzzle, current_state=state.current_state)
+    responses = await model.request(
+        prompt=prompt,
+        n=n,
+        request_id=request_id,
+        namespace=namespace,
+        params=params,
+    )
+    return [ensure_sonnet_separator(response) for response in responses]
+
+
+@AgentFactory.register
+class AgentCriticSonnetWriting(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateSonnetWriting,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_sonnet_role_prompt(
+            prompts.critic, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentCorrectorSonnetWriting(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateSonnetWriting,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_sonnet_role_prompt(
+            prompts.corrector, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentPlannerSonnetWriting(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateSonnetWriting,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_sonnet_role_prompt(
+            prompts.planner, model, state, n, namespace, request_id, params
+        )
+
+
 @AgentFactory.register
 class AgentSelfEvaluateSonnetWriting(Agent):
     @staticmethod

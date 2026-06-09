@@ -205,6 +205,54 @@ Current reasoning:
 ---
 Answer: '''
 
+critic = '''You are participating in a multiple-choice logic quiz as a verifier. Check the current answer for contradictions, unsupported assumptions, and choice-elimination errors. Then return only the corrected answer letter.
+
+Return exactly:
+Answer: X
+where X is one of a, b, c, or d.
+
+{paragraph}
+
+{question}
+{choices}
+
+Current answer:
+{current_state}
+
+Answer: '''
+
+corrector = '''You are participating in a multiple-choice logic quiz as a corrector. Repair the current answer by re-evaluating the paragraph and choices, then return only the best answer letter.
+
+Return exactly:
+Answer: X
+where X is one of a, b, c, or d.
+
+{paragraph}
+
+{question}
+{choices}
+
+Current answer:
+{current_state}
+
+Answer: '''
+
+planner = '''You are participating in a multiple-choice logic quiz as a planner. Internally decompose the reasoning needed to compare the choices, then return only the best answer letter.
+
+Return exactly:
+Answer: X
+where X is one of a, b, c, or d.
+
+{paragraph}
+
+{question}
+{choices}
+
+Current answer:
+{current_state}
+
+Answer: '''
+
 # Self-evaluation prompts for LogiQA
 self_evaluate_step = '''You are evaluating a reasoning step in a logical reasoning task. Given the paragraph, question, choices, and the proposed reasoning step, determine if this step is correct and logical. Consider:
 1. Does the reasoning follow from the given information?

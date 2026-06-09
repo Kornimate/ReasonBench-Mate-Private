@@ -81,6 +81,39 @@ Judge:
 io = cot
 react = act
 
+critic = '''Given a math problem, act as a verifier. Check the current direction for likely mistakes, missing assumptions, or unsupported jumps, then return exactly one action that tests or fixes the weakest point.
+
+Use exactly one of these formats:
+Analyze[...]
+Explain[...]
+Finish[...]
+
+Input Problem: {input}
+Verified next step:
+'''
+
+corrector = '''Given a math problem, act as a corrector. Produce exactly one action that repairs a flawed step, completes a missing calculation, or states the corrected final answer.
+
+Use exactly one of these formats:
+Analyze[...]
+Explain[...]
+Finish[...]
+
+Input Problem: {input}
+Corrected next step:
+'''
+
+planner = '''Given a math problem, act as a planner. Decompose the remaining solution internally, then return exactly one action that follows the best plan for reaching the answer.
+
+Use exactly one of these formats:
+Analyze[...]
+Explain[...]
+Finish[...]
+
+Input Problem: {input}
+Planned next step:
+'''
+
 aggregate = '''Select the best {k} actions to continue solving the math problem. Return only the numbers of the selected actions.
 
 Input Problem: {input}

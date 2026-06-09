@@ -286,6 +286,80 @@ class AgentReactLogiQA(Agent):
 
         return proposals
 
+
+async def act_with_logiqa_role_prompt(
+    template: str,
+    model: Model,
+    state: StateLogiQA,
+    n: int,
+    namespace: str,
+    request_id: str,
+    params: DecodingParameters,
+) -> List[str]:
+    choices = "\n".join(get_choices(state))
+    prompt = template.format(
+        paragraph=state.context,
+        question=state.question,
+        choices=choices,
+        current_state=state.current_state,
+    )
+    responses = await model.request(
+        prompt=prompt,
+        n=n,
+        request_id=request_id,
+        namespace=namespace,
+        params=params,
+    )
+    return [parse_answer(response) for response in responses]
+
+
+@AgentFactory.register
+class AgentCriticLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_logiqa_role_prompt(
+            prompts.critic, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentCorrectorLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_logiqa_role_prompt(
+            prompts.corrector, model, state, n, namespace, request_id, params
+        )
+
+
+@AgentFactory.register
+class AgentPlannerLogiQA(Agent):
+    @staticmethod
+    async def act(
+        model: Model,
+        state: StateLogiQA,
+        n: int,
+        namespace: str,
+        request_id: str,
+        params: DecodingParameters,
+    ) -> List[str]:
+        return await act_with_logiqa_role_prompt(
+            prompts.planner, model, state, n, namespace, request_id, params
+        )
+
 @AgentFactory.register
 class AgentSelfEvaluateLogiQA(Agent):
     @staticmethod
