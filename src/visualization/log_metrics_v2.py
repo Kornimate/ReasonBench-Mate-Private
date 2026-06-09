@@ -63,7 +63,7 @@ OVERALL_PLOT_METRICS: list[tuple[str, str, bool]] = [
     ("macro_solved_rate", "Macro Solved Rate", False),
     ("solved_instances", "Solved Instances", False),
     ("total_cost", "Total Cost", True),
-    ("total_calls", "Total Calls", True),
+    ("total_calls", "Total API Calls", True),
     ("cost_per_solved", "Cost per Solved Instance", True),
 ]
 
@@ -193,6 +193,7 @@ def parse_log(source: LogSource, thresholds: dict[str, float]) -> tuple[dict[str
         "solved_rate": float(np.mean(solved)),
         "total_cost": costs.get("total", np.nan),
         "total_calls": calls_total,
+        "api_calls_per_attempted_instance": calls_total / len(scores) if pd.notna(calls_total) else np.nan,
         "input_tokens": tokens.get("in", np.nan),
         "output_tokens": tokens.get("out", np.nan),
     }
@@ -249,7 +250,9 @@ def summarize_by_benchmark(runs: pd.DataFrame, samples: pd.DataFrame) -> pd.Data
         runs.groupby(["model", "benchmark", "method"], as_index=False)
         .agg(log_files=("source_file", "count"), total_cost=("total_cost", "sum"), total_calls=("total_calls", "sum"))
     )
-    return quality.merge(usage, on=["model", "benchmark", "method"], how="left")
+    result = quality.merge(usage, on=["model", "benchmark", "method"], how="left")
+    result["api_calls_per_attempted_instance"] = result["total_calls"] / result["attempted_instances"].replace(0, np.nan)
+    return result
 
 
 def harmonic_mean(a: pd.Series, b: pd.Series) -> pd.Series:
@@ -314,6 +317,9 @@ def summarize_by_method(benchmark: pd.DataFrame) -> pd.DataFrame:
         )
         summary["cost_per_solved"] = summary["total_cost"] / summary["solved_instances"].replace(0, np.nan)
         summary["calls_per_solved"] = summary["total_calls"] / summary["solved_instances"].replace(0, np.nan)
+        summary["api_calls_per_attempted_instance"] = summary["total_calls"] / summary[
+            "attempted_instances"
+        ].replace(0, np.nan)
         summary["quality_per_dollar"] = summary["macro_normalized_quality"] / summary["total_cost"].replace(0, np.nan)
         summary["quality_per_1k_calls"] = summary["macro_normalized_quality"] / (
             summary["total_calls"].replace(0, np.nan) / 1000
@@ -1002,7 +1008,6 @@ def plot_task_group_dashboards(benchmark: pd.DataFrame, plots_dir: Path) -> list
                 .dropna(subset=["mean_normalized_quality", "mean_solved_rate"], how="all")
                 .reset_index()
             )
-            print(values)
             if values.empty:
                 continue
             fig, axes = plt.subplots(1, 2, figsize=(15, 5.8), constrained_layout=True)
@@ -1215,7 +1220,13 @@ def print_results(summary: pd.DataFrame, bootstrap: pd.DataFrame, classic_ci: pd
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("input", type=Path, help="Path to repeats.zip or an extracted directory containing .log files")
+    parser.add_argument(
+        "input",
+        type=Path,
+        nargs="?",
+        default=Path("."),
+        help="Path to repeats.zip or an extracted directory containing .log files; defaults to actions_config.yaml",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("metrics_output"), help="Directory for generated CSV tables")
     parser.add_argument(
         "--threshold-mode",
@@ -1237,14 +1248,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
     config = OmegaConf.load("actions_config.yaml")
-    output_dir = Path(config.actions.visualize.output_path) / "logv2"
-    focus_methods = ["heterogeneous_foa", "reagents"]
-    # focus_methods = ["reagents", "reagents_v2tour"]
+    output_dir = args.output_dir
+    if output_dir == Path("metrics_output"):
+        output_dir = Path(config.actions.visualize.output_path) / "logv2"
+    focus_methods = args.focus_methods
 
-    # thresholds = SOLVED_THRESHOLDS_RUNTIME if args.threshold_mode == "runtime" else SOLVED_THRESHOLDS_LEGACY
-    thresholds = SOLVED_THRESHOLDS_RUNTIME
-    runs, samples = load_logs(Path(config.actions.visualize.log_path), thresholds)
+    thresholds = SOLVED_THRESHOLDS_RUNTIME if args.threshold_mode == "runtime" else SOLVED_THRESHOLDS_LEGACY
+    input_path = args.input
+    if str(input_path) == ".":
+        input_path = Path(config.actions.visualize.log_path)
+    runs, samples = load_logs(input_path, thresholds)
     parsed_methods = set(samples["method"].unique())
     missing_focus_methods = [method for method in focus_methods if method not in parsed_methods]
     if missing_focus_methods:
@@ -1259,7 +1275,7 @@ def main() -> int:
         print(f"Warning: {warning}", file=sys.stderr)
     summary = summarize_by_method(benchmark)
     rankings = metric_rankings(summary)
-    bootstrap = bootstrap_top_quality_difference(samples, summary, 10000, 42)
+    bootstrap = bootstrap_top_quality_difference(samples, summary, args.bootstrap, args.seed)
     classic_ci = classic_focus_method_confidence_intervals(samples, focus_methods)
     save_outputs(output_dir, runs, samples, benchmark, summary, rankings, bootstrap, classic_ci)
 
@@ -1267,15 +1283,16 @@ def main() -> int:
     print(f"Saved metric tables to: {output_dir.resolve()}")
     
     plot_paths: list[Path] = []
-    plot_paths, _ = generate_plots(
-        output_dir.resolve(), benchmark, summary, focus_methods, classic_ci
-    )
+    if not args.no_plots:
+        plot_paths, _ = generate_plots(
+            output_dir.resolve(), benchmark, summary, focus_methods, classic_ci
+        )
 
-    print(f"Parsed {len(runs)} log files and {len(samples)} recorded sample scores.")
-    print(f"Saved metric tables to: {output_dir.resolve()}")
-    print(f"Saved {len(plot_paths)} PNG plots to: {(output_dir / 'plots').resolve()}")
+    if not args.no_plots:
+        print(f"Saved {len(plot_paths)} PNG plots to: {(output_dir / 'plots').resolve()}")
 
-    print_results(summary, bootstrap, classic_ci)
+    if args.print_table:
+        print_results(summary, bootstrap, classic_ci)
     return 0
 
 
