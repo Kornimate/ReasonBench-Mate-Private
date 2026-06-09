@@ -50,32 +50,6 @@ reagents:
     - agent_type: "react"
       num_agents: 2
 
-reagents_v3:
-  width: 4
-  min_width: 2
-  max_width: 6
-  width_top_k: 2
-  width_patience: 2
-  width_value_scale: 1.0
-  width_confidence_threshold: 0.70
-  width_weak_threshold: 0.50
-  width_uncertainty_threshold: 0.25
-  num_steps: 6
-  max_value: 10
-  k: 2
-  alpha: 0.2
-  backtrack: 0.5
-  resampling: "linear_filtered"
-  min_steps: 1
-  num_evaluations: 3
-  origin: 30
-  difficulty_agent_type: "population"
-  step_agents:
-    - agent_type: "act"
-      num_agents: 2
-    - agent_type: "react"
-      num_agents: 2
-
 tot_bfs:
   num_selections: 3
   num_steps: 6
@@ -105,43 +79,3 @@ rap:
   exploration_constant: 1.0
   max_depth: 10
 
-reagents_aos:
-  width: 4
-  num_steps: 6
-  max_value: 1.0
-  backtrack: 0.9
-  resampling: linear
-  origin: 0.5
-  min_steps: 1
-  num_evaluations: 1
-
-  runtime_width_adaptation: true
-  difficulty_based_width_init: true
-
-  aos_alpha: 0.2
-  aos_temperature: 0.25
-  aos_epsilon: 0.10
-  aos_min_count_per_type: 1
-
-reagents_alns:
-  width: 4
-  num_steps: 6
-  max_value: 1.0
-  backtrack: 0.9
-  resampling: linear
-  origin: 0.5
-  min_steps: 1
-  num_evaluations: 1
-
-  runtime_width_adaptation: true
-  difficulty_based_width_init: true
-
-  alns_reaction_factor: 0.2
-  alns_min_weight: 0.05
-  alns_min_count_per_type: 1
-
-  alns_score_solved: 10.0
-  alns_score_new_best: 5.0
-  alns_score_improved: 2.0
-  alns_score_neutral: 0.5
-  alns_score_worse: 0.0

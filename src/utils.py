@@ -331,7 +331,13 @@ def initial_logging(
     config = configs.get(args.method)
     if config is None:
         config = configs.get(method_key)
-    if config is None and method_key in ["reagents_v2comp", "reagents_v2tour", "reagents_v3"]:
+    if config is None and method_key in [
+        "reagents_v2comp",
+        "reagents_v2tour",
+        "reagents_v3_base",
+        "reagents_v3_aos",
+        "reagents_v3_hierarchical",
+    ]:
         config = configs.get("reagents")
     if config is None:
         raise KeyError(f"No config found for method={args.method}")
