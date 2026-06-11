@@ -13,7 +13,7 @@ $benchmarks = @(
 )
 
 $method = "reagents_v2comp"
-$split = "n[20]"
+$split = "n[50]"
 $repeats = 1
 
 $provider = "openai"
