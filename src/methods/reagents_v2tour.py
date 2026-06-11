@@ -29,7 +29,7 @@ class MethodReagents_v2tour(MethodReagents):
         super().__init__(agents=agents, model=model, env=env, config=config)
 
         self.tournament_size = int(getattr(config, "tournament_size", 2))
-        self.tournament_epsilon = float(getattr(config, "tournament_epsilon", 0.05))
+        self.tournament_epsilon = float(getattr(config, "tournament_epsilon", 0.0))
 
     def _base_probs(self, depth: int) -> np.ndarray:
         bounded_depth = max(0, min(depth, self.num_steps - 1))
@@ -53,7 +53,6 @@ class MethodReagents_v2tour(MethodReagents):
                 len(self.step_agents),
                 size=tournament_size,
                 replace=False,
-                p=probs,
             ).tolist()
             selected = max(candidates, key=lambda agent_index: probs[agent_index])
 
