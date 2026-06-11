@@ -1241,7 +1241,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--focus-methods",
         nargs="+",
-        default=["heterogeneous_foa", "reagents"],
+        default=["reagents", "reagents_v2comp", "reagents_v2tour"],
         help="Methods used in dedicated per-benchmark comparison plots (default: heterogeneous_foa reagents)",
     )
     return parser

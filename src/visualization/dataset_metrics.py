@@ -25,6 +25,7 @@ class DatasetSpec:
     benchmark_class: str
     path: str
     extractor: Callable[[Any], tuple[str, str]]
+    answer_entropy_applicable: bool = False
     helm_loader: str | None = None
     helm_splitter: str | None = None
     helm_dataset_dir: str | None = None
@@ -127,13 +128,14 @@ DATASETS = [
     DatasetSpec("humaneval", "src.tasks.humaneval.benchmark.BenchmarkHumanEval", "datasets/dataset_humaneval.csv.gz", extract_humaneval),
     DatasetSpec("scibench", "src.tasks.scibench.benchmark.BenchmarkSciBench", "datasets/dataset_scibench.csv.gz", extract_scibench),
     DatasetSpec("sonnetwriting", "src.tasks.sonnetwriting.benchmark.BenchmarkSonnetWriting", "datasets/dataset_sonnetwriting.jsonl.gz", extract_sonnetwriting),
-    DatasetSpec("logiqa", "src.tasks.logiqa.benchmark.BenchmarkLogiQA", "datasets/dataset_logiqa.csv.gz", extract_logiqa),
+    DatasetSpec("logiqa", "src.tasks.logiqa.benchmark.BenchmarkLogiQA", "datasets/dataset_logiqa.csv.gz", extract_logiqa, answer_entropy_applicable=True),
     DatasetSpec("matharena", "src.tasks.matharena.benchmark.BenchmarkMathArena", "datasets/dataset_matharena.jsonl.gz", extract_matharena),
     DatasetSpec(
         "pubmed_qa",
         "src.tasks.pubmed_qa.benchmark.BenchmarkPubMedQA",
         "datasets/dataset_pubmed_qa.csv.gz",
         extract_mapping,
+        answer_entropy_applicable=True,
         helm_loader="src.tasks.pubmed_qa.benchmark.load_instances",
         helm_splitter="src.tasks.pubmed_qa.benchmark.split_instances",
         helm_dataset_dir="datasets/medical/pubmed_qa",
@@ -323,6 +325,7 @@ def load_dataset(spec: DatasetSpec, split: str) -> tuple[pd.DataFrame, str | Non
                 "input_char_count": len(input_text),
                 "answer_char_count": len(answer_text),
                 "label": normalize_answer_label(answer_text),
+                "answer_entropy_applicable": spec.answer_entropy_applicable,
             }
         )
     return pd.DataFrame(rows), None
@@ -379,11 +382,13 @@ def aggregate_metrics(samples: pd.DataFrame, failures: list[dict[str, str]]) -> 
     if not samples.empty:
         for dataset, group in samples.groupby("dataset"):
             label_counts = Counter(group["label"])
+            answer_entropy_applicable = bool(group["answer_entropy_applicable"].iloc[0])
             input_stats = corpus_input_stats(group["input_text"].tolist())
             rows.append(
                 {
                     "dataset": dataset,
                     "status": "loaded",
+                    "answer_entropy_applicable": answer_entropy_applicable,
                     "num_instances": len(group),
                     "median_input_words": median(group["input_word_count"]),
                     "mean_input_words": mean(group["input_word_count"]),
@@ -393,8 +398,8 @@ def aggregate_metrics(samples: pd.DataFrame, failures: list[dict[str, str]]) -> 
                     "input_lexical_diversity": mean_document_lexical_diversity(group["input_text"].tolist()),
                     "corpus_input_lexical_diversity": corpus_lexical_diversity(group["input_text"].tolist()),
                     **input_stats,
-                    "answer_entropy": entropy(label_counts),
-                    "normalized_answer_entropy": normalized_entropy(label_counts),
+                    "answer_entropy": entropy(label_counts) if answer_entropy_applicable else None,
+                    "normalized_answer_entropy": normalized_entropy(label_counts) if answer_entropy_applicable else None,
                     "dominant_label_share": max(label_counts.values()) / len(group) if len(group) else None,
                     "free_text_answer_share": sum(group["label"] == "<free_text>") / len(group) if len(group) else None,
                 }
@@ -405,6 +410,7 @@ def aggregate_metrics(samples: pd.DataFrame, failures: list[dict[str, str]]) -> 
             {
                 "dataset": failure["dataset"],
                 "status": failure["error"],
+                "answer_entropy_applicable": False,
                 "num_instances": 0,
                 "median_input_words": None,
                 "mean_input_words": None,
@@ -664,7 +670,6 @@ def plot_complexity_heatmap(metrics: pd.DataFrame, output: Path) -> None:
         "input_hapax_share",
         "mean_input_sentence_words",
         "input_stopword_share",
-        "normalized_answer_entropy",
         "dominant_label_share",
     ]
     df = df.dropna(subset=cols)
