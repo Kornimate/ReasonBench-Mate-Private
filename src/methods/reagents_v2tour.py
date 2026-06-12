@@ -1,3 +1,4 @@
+import random
 from typing import Optional, TypedDict
 
 import numpy as np
@@ -6,7 +7,7 @@ from omegaconf import OmegaConf
 from .. import AgentDictFactory, MethodFactory
 from ..typedefs import Agent, DecodingParameters, Environment, Model
 from ..logging_utils import log_event
-from .reagents import DifficultyAgentSpec, MethodReagents, StepAgentSpec
+from .reagents import DifficultyAgentSpec, MethodReagents, SearchRecord, StepAgentSpec
 
 
 @AgentDictFactory.register
@@ -31,35 +32,85 @@ class MethodReagents_v2tour(MethodReagents):
         self.tournament_size = int(getattr(config, "tournament_size", 2))
         self.tournament_epsilon = float(getattr(config, "tournament_epsilon", 0.0))
 
-    def _base_probs(self, depth: int) -> np.ndarray:
-        bounded_depth = max(0, min(depth, self.num_steps - 1))
-        priors = np.nan_to_num(self.priors[bounded_depth], nan=0.0)
-        total = priors.sum()
-        if total <= 0:
-            return np.ones(len(self.step_agents), dtype=float) / len(self.step_agents)
-        probs = priors / total
-        probs = np.maximum(probs, 1e-9)
-        return probs / probs.sum()
+    def _clone_selected_states(self, resampler, visited_states, selected_indices):
+        random.seed(resampler.randomness)
+        new_randomness = [random.randint(1, 1000) for _ in selected_indices]
+        if new_randomness:
+            resampler.randomness = new_randomness[-1]
+        return [
+            visited_states[source_index][2].clone(randomness)
+            for source_index, randomness in zip(selected_indices, new_randomness)
+        ]
 
-    def _sample_agent_index(self, depth: int) -> int:
-        probs = self._base_probs(depth)
+    def _tournament_state_indices(self, visited_states, width: int) -> list[int]:
+        if not visited_states or width <= 0:
+            return []
+
+        tournament_size = max(1, min(self.tournament_size, len(visited_states)))
         epsilon = max(0.0, min(1.0, self.tournament_epsilon))
-        if np.random.random() < epsilon:
-            selected = int(np.random.choice(len(self.step_agents)))
-            candidates = [selected]
-        else:
-            tournament_size = max(1, min(self.tournament_size, len(self.step_agents)))
-            candidates = np.random.choice(
-                len(self.step_agents),
-                size=tournament_size,
-                replace=False,
-            ).tolist()
-            selected = max(candidates, key=lambda agent_index: probs[agent_index])
+        selected_indices = []
+        tournament_logs = []
 
-        log_event("REAGENTS_V2TOUR_SELECTION", {
-            "depth": depth,
-            "selected_agent_index": selected,
-            "candidate_agent_indices": candidates,
-            "prior_probs": probs.tolist(),
+        for _ in range(width):
+            if np.random.random() < epsilon:
+                candidates = [int(np.random.choice(len(visited_states)))]
+                selected = candidates[0]
+            else:
+                candidates = np.random.choice(
+                    len(visited_states),
+                    size=tournament_size,
+                    replace=False,
+                ).tolist()
+                selected = max(candidates, key=lambda source_index: visited_states[source_index][1])
+
+            selected_indices.append(int(selected))
+            tournament_logs.append({
+                "candidate_indices": candidates,
+                "candidate_values": [float(visited_states[i][1]) for i in candidates],
+                "selected_index": int(selected),
+                "selected_value": float(visited_states[selected][1]),
+            })
+
+        log_event("REAGENTS_V2TOUR_STATE_SELECTION", {
+            "width": width,
+            "tournament_size": tournament_size,
+            "selected_indices": selected_indices,
+            "tournaments": tournament_logs,
         })
-        return int(selected)
+        return selected_indices
+
+    def _resample_records(
+        self,
+        resampler,
+        candidate_records: list[SearchRecord],
+        visited_states: list[tuple[str, float, object]],
+        terminal_indices: list[int],
+        step: int,
+        width: int,
+    ):
+        remaining_steps = self.num_steps - (step + 1)
+        visited_states = [
+            (identifier, value * self.backtrack, state)
+            for identifier, value, state in visited_states
+            if remaining_steps >= self.min_steps - len(state.steps)
+        ]
+
+        for i, record in enumerate(candidate_records):
+            if i not in terminal_indices:
+                visited_states.append((f"{i}.{step}", record.value, record.state))
+
+        if not visited_states:
+            return candidate_records, visited_states
+
+        selected_indices = self._tournament_state_indices(visited_states, width)
+        resampled_states = self._clone_selected_states(resampler, visited_states, selected_indices)
+        records = [
+            SearchRecord(
+                state=resampled_state,
+                value=float(visited_states[source_index][1]),
+                depth=min(step + 1, self.num_steps - 1),
+                uncertainty=0.0,
+            )
+            for resampled_state, source_index in zip(resampled_states, selected_indices)
+        ]
+        return records, visited_states
