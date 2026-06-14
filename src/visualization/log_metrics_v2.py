@@ -88,6 +88,13 @@ BENCHMARK_PLOT_METRICS: list[tuple[str, str, bool]] = [
     ("total_cost", "Total Cost", True),
 ]
 
+BENCHMARK_BASIS_GRID_METRICS: list[tuple[str, str, bool]] = [
+    ("normalized_quality", "Mean Normalized Quality", False),
+    ("solved_instances", "Solved Instances", False),
+    ("cost_per_solved", "Cost per Solved Instance", True),
+    ("total_cost", "Total Cost", True),
+]
+
 TASK_GROUPS: dict[str, list[str]] = {
     "mathematical_logical": ["game24", "logiqa", "matharena"],
     "reasoning_coding": ["hle", "hotpotqa", "humaneval", "scibench", "sonnetwriting"],
@@ -977,6 +984,39 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
     return paths
 
 
+def _add_per_benchmark_method_metrics(values: pd.DataFrame) -> pd.DataFrame:
+    """Add method-summary-style derived metrics to one benchmark/method table."""
+    values = values.copy()
+    values["macro_normalized_quality"] = values["normalized_quality"]
+    values["micro_normalized_quality"] = values["normalized_quality"]
+    values["overall_solved_rate"] = values["solved_rate"]
+    values["macro_solved_rate"] = values["solved_rate"]
+    values["harmonic_effectiveness"] = harmonic_mean(
+        values["macro_normalized_quality"], values["macro_solved_rate"]
+    )
+    values["cost_per_solved"] = values["total_cost"] / values["solved_instances"].replace(0, np.nan)
+    values["calls_per_solved"] = values["total_calls"] / values["solved_instances"].replace(0, np.nan)
+    values["quality_per_dollar"] = values["macro_normalized_quality"] / values["total_cost"].replace(0, np.nan)
+    values["quality_per_1k_calls"] = values["macro_normalized_quality"] / (
+        values["total_calls"].replace(0, np.nan) / 1000
+    )
+    values["solved_per_dollar"] = values["solved_instances"] / values["total_cost"].replace(0, np.nan)
+    values["solved_per_1k_calls"] = values["solved_instances"] / (
+        values["total_calls"].replace(0, np.nan) / 1000
+    )
+    values["rank_quality"] = values["macro_normalized_quality"].rank(ascending=False, method="min")
+    values["rank_solved"] = values["solved_instances"].rank(ascending=False, method="min")
+    values["rank_cost"] = values["total_cost"].rank(ascending=True, method="min")
+    values["rank_calls"] = values["total_calls"].rank(ascending=True, method="min")
+    values["performance_priority_composite_rank"] = (
+        0.40 * values["rank_quality"]
+        + 0.30 * values["rank_solved"]
+        + 0.15 * values["rank_cost"]
+        + 0.15 * values["rank_calls"]
+    )
+    return values
+
+
 def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
     """Create selected standalone per-benchmark plots with all methods shown."""
     output_dir = _prepare_plot_dir(plots_dir / "per_benchmark_all_methods")
@@ -986,33 +1026,7 @@ def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: P
         methods = sorted(model_part["method"].unique())
         for bench_name, bench_part in model_part.groupby("benchmark", dropna=False):
             values = bench_part.set_index("method").reindex(methods).reset_index()
-            values["macro_normalized_quality"] = values["normalized_quality"]
-            values["micro_normalized_quality"] = values["normalized_quality"]
-            values["overall_solved_rate"] = values["solved_rate"]
-            values["macro_solved_rate"] = values["solved_rate"]
-            values["harmonic_effectiveness"] = harmonic_mean(
-                values["macro_normalized_quality"], values["macro_solved_rate"]
-            )
-            values["cost_per_solved"] = values["total_cost"] / values["solved_instances"].replace(0, np.nan)
-            values["calls_per_solved"] = values["total_calls"] / values["solved_instances"].replace(0, np.nan)
-            values["quality_per_dollar"] = values["macro_normalized_quality"] / values["total_cost"].replace(0, np.nan)
-            values["quality_per_1k_calls"] = values["macro_normalized_quality"] / (
-                values["total_calls"].replace(0, np.nan) / 1000
-            )
-            values["solved_per_dollar"] = values["solved_instances"] / values["total_cost"].replace(0, np.nan)
-            values["solved_per_1k_calls"] = values["solved_instances"] / (
-                values["total_calls"].replace(0, np.nan) / 1000
-            )
-            values["rank_quality"] = values["macro_normalized_quality"].rank(ascending=False, method="min")
-            values["rank_solved"] = values["solved_instances"].rank(ascending=False, method="min")
-            values["rank_cost"] = values["total_cost"].rank(ascending=True, method="min")
-            values["rank_calls"] = values["total_calls"].rank(ascending=True, method="min")
-            values["performance_priority_composite_rank"] = (
-                0.40 * values["rank_quality"]
-                + 0.30 * values["rank_solved"]
-                + 0.15 * values["rank_cost"]
-                + 0.15 * values["rank_calls"]
-            )
+            values = _add_per_benchmark_method_metrics(values)
             attempts = values["attempted_instances"].dropna()
             attempts_label = f"n={int(attempts.iloc[0])}" if not attempts.empty else "n=unknown"
             for metric, title, ascending in metrics:
@@ -1031,6 +1045,43 @@ def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: P
                 fig.savefig(path, dpi=180)
                 plt.close(fig)
                 paths.append(path)
+    return paths
+
+
+def plot_all_method_benchmark_basis_grids(benchmark: pd.DataFrame, plots_dir: Path) -> list[Path]:
+    """Create one 2x2 dashboard per benchmark with the core all-method metrics."""
+    output_dir = _prepare_plot_dir(plots_dir / "per_benchmark_basis_grids")
+    paths: list[Path] = []
+    for model, model_part in benchmark.groupby("model", dropna=False):
+        methods = sorted(model_part["method"].unique())
+        for bench_name, bench_part in model_part.groupby("benchmark", dropna=False):
+            values = bench_part.set_index("method").reindex(methods).reset_index()
+            values = _add_per_benchmark_method_metrics(values)
+            attempts = values["attempted_instances"].dropna()
+            attempts_label = f"n={int(attempts.iloc[0])}" if not attempts.empty else "n=unknown"
+
+            fig, axes = plt.subplots(2, 2, figsize=(16, 10), constrained_layout=True)
+            axes_array = np.array(axes).reshape(-1)
+            for ax, (metric, title, ascending) in zip(axes_array, BENCHMARK_BASIS_GRID_METRICS):
+                ordered = values.sort_values(metric, ascending=ascending, na_position="last")
+                _bar_methods(ax, ordered["method"], ordered[metric])
+                ax.set_title(title)
+                ax.set_xlabel("Method")
+                ax.tick_params(axis="x", rotation=45, labelsize=8)
+                _format_axis(ax, metric)
+                for idx, value in enumerate(ordered[metric]):
+                    if pd.notna(value):
+                        label = f"{int(value):,}" if metric == "solved_instances" else f"{value:,.4f}"
+                        ax.text(idx, value, label, ha="center", va="bottom", fontsize=7)
+
+            fig.suptitle(
+                f"Core benchmark metrics by method - {benchmark_label(bench_name)} - {model} ({attempts_label})",
+                fontsize=14,
+            )
+            path = output_dir / f"{_slug(model)}_{_slug(bench_name)}_basis_grid.png"
+            fig.savefig(path, dpi=180)
+            plt.close(fig)
+            paths.append(path)
     return paths
 
 
@@ -1240,6 +1291,7 @@ def generate_plots(
     paths.extend(plot_focus_per_benchmark(benchmark, focus_methods, difficulty, plots_dir))
     paths.extend(plot_all_method_benchmark_dashboards(benchmark, plots_dir))
     paths.extend(plot_all_method_benchmark_metric_plots(benchmark, plots_dir))
+    paths.extend(plot_all_method_benchmark_basis_grids(benchmark, plots_dir))
     paths.extend(plot_task_group_dashboards(benchmark, plots_dir))
     paths.extend(plot_classic_confidence_intervals(classic_ci, plots_dir))
     paths.extend(plot_classic_confidence_interval_dashboard(classic_ci, plots_dir))
