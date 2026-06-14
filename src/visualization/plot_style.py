@@ -79,7 +79,7 @@ FALLBACK_COLORS = [
 
 MODERN_RC_PARAMS = {
     "figure.facecolor": "white",
-    "axes.facecolor": "white",
+    "axes.facecolor": "#fbfcfe",
     "axes.edgecolor": "#333333",
     "axes.labelcolor": "#222222",
     "axes.titlecolor": "#111111",
@@ -91,7 +91,7 @@ MODERN_RC_PARAMS = {
     "ytick.color": "#333333",
     "grid.color": "#d9dde3",
     "grid.linewidth": 0.7,
-    "grid.alpha": 0.6,
+    "grid.alpha": 0.55,
     "legend.frameon": False,
     "savefig.facecolor": "white",
     "savefig.bbox": "tight",
@@ -164,3 +164,25 @@ def apply_plot_area_style(ax: Any) -> None:
     ax.spines["left"].set_color("#333333")
     ax.spines["bottom"].set_color("#333333")
     ax.tick_params(colors="#333333")
+    ax.set_axisbelow(True)
+
+
+def style_bar_container(bars: Any) -> Any:
+    try:
+        import matplotlib.patheffects as path_effects
+    except ImportError:
+        path_effects = None
+
+    for bar in bars:
+        bar.set_edgecolor("white")
+        bar.set_linewidth(0.9)
+        bar.set_alpha(0.96)
+        bar.set_zorder(3)
+        if path_effects is not None:
+            bar.set_path_effects(
+                [
+                    path_effects.SimplePatchShadow(offset=(0.8, -0.8), alpha=0.12, rho=0.96),
+                    path_effects.Normal(),
+                ]
+            )
+    return bars

@@ -29,6 +29,7 @@ from src.visualization.plot_style import (
     method_label,
     method_labels,
     sentence_case,
+    style_bar_container,
 )
 
 configure_matplotlib()
@@ -640,7 +641,8 @@ def _format_axis(ax: plt.Axes, metric: str) -> None:
 def _bar_methods(ax: plt.Axes, methods: pd.Series | list[object], values: pd.Series | list[object], **kwargs):
     methods_list = list(methods)
     x = np.arange(len(methods_list))
-    bars = ax.bar(x, values, color=method_colors(methods_list), edgecolor="white", linewidth=0.9, **kwargs)
+    bars = ax.bar(x, values, color=method_colors(methods_list), **kwargs)
+    style_bar_container(bars)
     ax.set_xticks(x)
     ax.set_xticklabels(method_labels(methods_list))
     return bars
@@ -814,6 +816,16 @@ def plot_pareto_views(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
     for model, data in summary.groupby("model", dropna=False):
         for resource, xlabel in [("total_cost", "Total Cost (USD)"), ("total_calls", "Total Calls")]:
             fig, ax = plt.subplots(figsize=(9, 6), constrained_layout=True)
+            pareto_data = data[data["pareto_optimal"]].sort_values(resource)
+            if len(pareto_data) >= 2:
+                ax.plot(
+                    pareto_data[resource],
+                    pareto_data["macro_normalized_quality"],
+                    color="#222222",
+                    linewidth=1.4,
+                    alpha=0.72,
+                    zorder=2,
+                )
             ax.scatter(
                 data[resource],
                 data["macro_normalized_quality"],
@@ -821,6 +833,7 @@ def plot_pareto_views(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
                 color=method_colors(data["method"]),
                 edgecolors="white",
                 linewidths=0.8,
+                zorder=3,
             )
             for _, row in data.iterrows():
                 suffix = " *" if bool(row["pareto_optimal"]) else ""
@@ -902,15 +915,14 @@ def plot_focus_dashboard(
             for index, method in enumerate(focus_methods):
                 vals = part[part["method"] == method].set_index("benchmark").reindex(order)[metric]
                 offset = (index - (len(focus_methods) - 1) / 2) * width
-                ax.bar(
+                bars = ax.bar(
                     x + offset,
                     vals,
                     width=width,
                     label=method_label(method),
                     color=method_color(method),
-                    edgecolor="white",
-                    linewidth=0.8,
                 )
+                style_bar_container(bars)
             ax.set_title(title)
             ax.set_xticks(x)
             ax.set_xticklabels(benchmark_labels(order), rotation=45, ha="right")

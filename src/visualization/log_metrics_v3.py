@@ -30,6 +30,7 @@ from src.visualization.plot_style import (
     configure_matplotlib,
     method_colors,
     method_labels,
+    style_bar_container,
 )
 
 configure_matplotlib()
@@ -321,7 +322,8 @@ def _ordered_methods(frame: pd.DataFrame, benchmark: str) -> list[str]:
 
 def _bar(ax: plt.Axes, methods: list[str], values: list[float], title: str, ylabel: str) -> None:
     x = np.arange(len(methods))
-    ax.bar(x, values, color=method_colors(methods), edgecolor="white", linewidth=0.9)
+    bars = ax.bar(x, values, color=method_colors(methods))
+    style_bar_container(bars)
     ax.set_xticks(x)
     ax.set_xticklabels(method_labels(methods), rotation=25, ha="right")
     ax.set_title(title)

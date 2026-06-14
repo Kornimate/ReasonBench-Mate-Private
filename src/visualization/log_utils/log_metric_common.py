@@ -11,6 +11,7 @@ from src.visualization.plot_style import (
     configure_matplotlib,
     method_color,
     method_label,
+    style_bar_container,
 )
 
 HIGHLIGHT_METHOD_COLORS = {
@@ -118,7 +119,8 @@ def add_method_highlight_legend(axis, df: pd.DataFrame) -> None:
 
 def draw_metric_bars(axis, labels: list[str], values: pd.Series, colors: list[str]) -> None:
     x_positions = list(range(len(labels)))
-    axis.bar(x_positions, values, color=colors, edgecolor="white", linewidth=0.8)
+    bars = axis.bar(x_positions, values, color=colors)
+    style_bar_container(bars)
     axis.set_xticks(x_positions)
     axis.set_xticklabels(labels, rotation=45, ha="right", rotation_mode="anchor")
     apply_plot_area_style(axis)

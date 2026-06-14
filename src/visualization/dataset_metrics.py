@@ -20,6 +20,7 @@ from src.visualization.plot_style import (
     benchmark_labels,
     configure_matplotlib,
     sentence_case,
+    style_bar_container,
 )
 
 
@@ -513,7 +514,8 @@ def plot_dataset_size(metrics: pd.DataFrame, output: Path) -> None:
     plt.figure(figsize=(10, 5))
     ax = plt.gca()
     datasets = df["dataset"].tolist()
-    bars = ax.bar(range(len(datasets)), df["num_instances"], color=benchmark_colors(datasets), edgecolor="white", linewidth=0.9)
+    bars = ax.bar(range(len(datasets)), df["num_instances"], color=benchmark_colors(datasets))
+    style_bar_container(bars)
     annotate_bars(ax, bars)
     plt.title("Dataset Size")
     plt.ylabel("Instances")
@@ -539,6 +541,8 @@ def plot_input_length(samples: pd.DataFrame, output: Path) -> None:
     for patch, color in zip(boxplot["boxes"], benchmark_colors(datasets)):
         patch.set_facecolor(color)
         patch.set_alpha(0.75)
+        patch.set_edgecolor("white")
+        patch.set_linewidth(0.9)
     for i, median_line in enumerate(boxplot["medians"], start=1):
         median_value = median_line.get_ydata()[0]
         ax.annotate(
@@ -658,7 +662,8 @@ def plot_vocabulary_profile(metrics: pd.DataFrame, output: Path) -> None:
     fig, ax1 = plt.subplots(figsize=(10, 5))
     datasets = df["dataset"].tolist()
     x = list(range(len(datasets)))
-    bars = ax1.bar(x, df["input_vocab_size"], color=benchmark_colors(datasets), edgecolor="white", linewidth=0.9)
+    bars = ax1.bar(x, df["input_vocab_size"], color=benchmark_colors(datasets))
+    style_bar_container(bars)
     annotate_bars(ax1, bars)
     ax1.set_ylabel("Unique input tokens")
     set_benchmark_ticks(ax1, datasets)
@@ -686,7 +691,8 @@ def plot_sentence_and_stopword_profile(metrics: pd.DataFrame, output: Path) -> N
     fig, ax1 = plt.subplots(figsize=(10, 5))
     datasets = df["dataset"].tolist()
     x = list(range(len(datasets)))
-    bars = ax1.bar(x, df["mean_input_sentence_words"], color=benchmark_colors(datasets), edgecolor="white", linewidth=0.9)
+    bars = ax1.bar(x, df["mean_input_sentence_words"], color=benchmark_colors(datasets))
+    style_bar_container(bars)
     annotate_bars(ax1, bars)
     ax1.set_ylabel("Mean sentence words")
     set_benchmark_ticks(ax1, datasets)
