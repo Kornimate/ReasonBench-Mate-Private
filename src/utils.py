@@ -334,9 +334,6 @@ def initial_logging(
     if config is None and method_key in [
         "reagents_v2comp",
         "reagents_v2tour",
-        "reagents_v3_base",
-        "reagents_v3_aos",
-        "reagents_v3_hierarchical",
     ]:
         config = configs.get("reagents")
     if config is None:

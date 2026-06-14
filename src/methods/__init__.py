@@ -11,6 +11,3 @@ from .heterogeneous_foa import AgentDictHeterogeneousFOA, MethodHeterogeneousFOA
 from .reagents import AgentDictReagents, MethodReagents
 from .reagents_v2comp import AgentDictReagents_v2comp, MethodReagents_v2comp
 from .reagents_v2tour import AgentDictReagents_v2tour, MethodReagents_v2tour
-from .reagents_v3_base import AgentDictReagents_v3_base, MethodReagents_v3_base
-from .reagents_v3_aos import AgentDictReagents_v3_aos, MethodReagents_v3_aos
-from .reagents_v3_hierarchical import AgentDictReagents_v3_hierarchical, MethodReagents_v3_hierarchical
