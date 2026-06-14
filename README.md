@@ -33,9 +33,9 @@ ReasonBENCH implements representative reasoning strategies behind a standardized
 | **RAP** | Planning | Hao et al., 2023 |
 | **FoA** | Evolutionary | Klein et al., 2025 |
 | **Het-FoA** | Evolutionary | `shoan-main` heterogeneous fleet variant |
-| **ReAgEnTS** | Evolutionary | Adaptive multi-agent reasoning variant |
-| **ReAgEnTS-V2 Comp** | Evolutionary | Competition-style ReAgEnTS variant |
-| **ReAgEnTS-V2 Tour** | Evolutionary | Tournament-style ReAgEnTS variant |
+| **ReAgents** | Evolutionary | Adaptive multi-agent reasoning variant |
+| **ReAgents-V2 Comp** | Evolutionary | Competition-style ReAgEnTS variant |
+| **ReAgents-V2 Tour** | Evolutionary | Tournament-style ReAgEnTS variant |
 
 ## Benchmarks
 
