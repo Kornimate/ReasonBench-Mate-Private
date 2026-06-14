@@ -18,3 +18,4 @@ datasets/dataset_wildchat.csv.gz
 /datasets/medical/pubmed_qa/
 OUT/
 /results
+/caches
