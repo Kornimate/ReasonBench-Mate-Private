@@ -806,7 +806,7 @@ def raw_response_consistency(raw_dir: Path) -> pd.DataFrame:
 
 METHOD_GROUP_COLUMNS = ["model", "benchmark", "method"]
 EXCLUDED_METRIC_METHODS = {"io"}
-EXCLUDED_METRIC_BENCHMARKS = {"matharena"}
+EXCLUDED_METRIC_BENCHMARKS = set()
 
 
 def exclude_metric_methods(df: pd.DataFrame) -> pd.DataFrame:
