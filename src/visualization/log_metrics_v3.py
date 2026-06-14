@@ -24,6 +24,15 @@ from src.visualization.log_metrics_v2 import (
     summarize_by_benchmark,
     validate_coverage,
 )
+from src.visualization.plot_style import (
+    apply_plot_area_style,
+    benchmark_label,
+    configure_matplotlib,
+    method_colors,
+    method_labels,
+)
+
+configure_matplotlib()
 
 
 FOCUS_METHODS = ["reagents", "heterogeneous_foa"]
@@ -33,13 +42,6 @@ COMPARISON_METHODS = {
     "mtsamples_procedures": ["io", *FOCUS_METHODS],
     "pubmed_qa": ["tot_bfs", *FOCUS_METHODS],
     "scibench": ["cot", *FOCUS_METHODS],
-}
-METHOD_LABELS = {
-    "heterogeneous_foa": "Heterogeneous FoA",
-    "reagents": "ReAgents",
-    "tot_bfs": "ToT BFS",
-    "io": "IO",
-    "cot": "CoT",
 }
 TRACE_PATTERN = re.compile(
     r"^\s*(?P<marker>TOT_BFS_STEP|REAGENTS_STEP|HETEROGENEOUS_FOA_STEP|IO_RESULT|COT_RESULT)\s+(?P<payload>\{.*\})\s*$",
@@ -55,10 +57,6 @@ ELABORATION_PATTERN = re.compile(
     r"\b(plan|follow[- ]?up|monitor|recommend|management|postoperative|assessment|consult|education|schedule)\b",
     re.IGNORECASE,
 )
-
-
-def method_label(method: object) -> str:
-    return METHOD_LABELS.get(str(method), str(method).replace("_", " ").title())
 
 
 def infer_path_parts(path: Path) -> tuple[str | None, str | None, str | None, int | None]:
@@ -321,14 +319,14 @@ def _ordered_methods(frame: pd.DataFrame, benchmark: str) -> list[str]:
     return [method for method in COMPARISON_METHODS[benchmark] if method in present]
 
 
-def _bar(ax: plt.Axes, labels: list[str], values: list[float], title: str, ylabel: str, colors: list[str] | None = None) -> None:
-    colors = colors or ["#e76f51" if label in {"ToT BFS", "IO", "CoT"} else "#2a9d8f" for label in labels]
-    x = np.arange(len(labels))
-    ax.bar(x, values, color=colors)
+def _bar(ax: plt.Axes, methods: list[str], values: list[float], title: str, ylabel: str) -> None:
+    x = np.arange(len(methods))
+    ax.bar(x, values, color=method_colors(methods), edgecolor="white", linewidth=0.9)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=25, ha="right")
+    ax.set_xticklabels(method_labels(methods), rotation=25, ha="right")
     ax.set_title(title)
     ax.set_ylabel(ylabel)
+    apply_plot_area_style(ax)
     for idx, value in enumerate(values):
         if pd.notna(value):
             ax.text(idx, value, f"{value:.2f}", ha="center", va="bottom", fontsize=8)
@@ -346,24 +344,24 @@ def plot_option_coverage_evidence(output_dir: Path, summary: pd.DataFrame) -> li
         for ax, bench in zip(axes, ["logiqa", "pubmed_qa"]):
             methods = _ordered_methods(data, bench)
             part = data[data["benchmark"].eq(bench)].set_index("method").reindex(methods)
-            labels = [method_label(method) for method in methods]
             if bench == "logiqa":
                 values = part["mean_unique_options"].to_list()
-                title = "logiqa: multiple-choice option coverage"
+                title = f"{benchmark_label(bench)}: Multiple-choice option coverage"
                 ylabel = "Unique a/b/c/d options"
                 ax.set_ylim(0, 4.2)
             else:
                 values = part["mean_unique_actions"].to_list()
-                title = "pubmed_qa: answer-candidate coverage"
+                title = f"{benchmark_label(bench)}: Answer-candidate coverage"
                 ylabel = "Unique candidate answers"
-            _bar(ax, labels, values, title, ylabel)
+            _bar(ax, methods, values, title, ylabel)
             ax2 = ax.twinx()
-            ax2.plot(np.arange(len(labels)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
+            ax2.plot(np.arange(len(methods)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
             ax2.set_ylabel("Solved rate")
             ax2.set_ylim(0, 1.05)
+            apply_plot_area_style(ax2)
 
         fig.suptitle(
-            f"LogiQA and PubMedQA: Candidate Coverage Evidence - {model}\n"
+            f"LogiQA and PubMedQA: Candidate coverage evidence - {model}\n"
             "Bars are trace-derived candidate coverage; dark lines show solved rate.",
             fontsize=13,
         )
@@ -383,12 +381,10 @@ def plot_mtsamples_drift_evidence(output_dir: Path, summary: pd.DataFrame) -> li
         bench = "mtsamples_procedures"
         methods = _ordered_methods(data, bench)
         part = data[data["benchmark"].eq(bench)].set_index("method").reindex(methods)
-        labels = [method_label(method) for method in methods]
-
         fig, axes = plt.subplots(1, 2, figsize=(14, 5.2), constrained_layout=True)
         _bar(
             axes[0],
-            labels,
+            methods,
             part["candidate_coverage"].to_list(),
             "Candidate branching",
             "Distinct candidates per trace",
@@ -396,18 +392,19 @@ def plot_mtsamples_drift_evidence(output_dir: Path, summary: pd.DataFrame) -> li
         noise = part["selection_churn_evidence_per_trace"]
         _bar(
             axes[1],
-            labels,
+            methods,
             noise.to_list(),
             "Selection churn evidence",
             "Explicit churn + width/pruned per trace",
         )
         ax2 = axes[1].twinx()
-        ax2.plot(np.arange(len(labels)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
+        ax2.plot(np.arange(len(methods)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
         ax2.set_ylabel("Solved rate")
         ax2.set_ylim(0, 1.05)
+        apply_plot_area_style(ax2)
 
         fig.suptitle(
-            f"MTSamples Procedures: Evidence for Over-Processing - {model}",
+            f"MTSamples Procedures: Evidence for over-processing - {model}",
             fontsize=13,
         )
         path = plots_dir / f"{_slug(model)}_mtsamples_procedures_overprocessing_evidence.png"
@@ -426,17 +423,16 @@ def plot_scibench_disagreement_evidence(output_dir: Path, summary: pd.DataFrame)
         bench = "scibench"
         methods = _ordered_methods(data, bench)
         part = data[data["benchmark"].eq(bench)].set_index("method").reindex(methods)
-        labels = [method_label(method) for method in methods]
-
         fig, ax = plt.subplots(figsize=(8, 5.2), constrained_layout=True)
-        _bar(ax, labels, part["mean_unique_actions"].to_list(), "Candidate disagreement", "Distinct candidates per trace")
+        _bar(ax, methods, part["mean_unique_actions"].to_list(), "Candidate disagreement", "Distinct candidates per trace")
         ax2 = ax.twinx()
-        ax2.plot(np.arange(len(labels)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
+        ax2.plot(np.arange(len(methods)), part["solved_rate"], color="#264653", marker="o", linewidth=2)
         ax2.set_ylabel("Solved rate")
         ax2.set_ylim(0, 1.05)
+        apply_plot_area_style(ax2)
 
         fig.suptitle(
-            f"SciBench: Evidence for Candidate Disagreement - {model}",
+            f"SciBench: Evidence for candidate disagreement - {model}",
             fontsize=13,
         )
         path = plots_dir / f"{_slug(model)}_scibench_candidate_disagreement_evidence.png"

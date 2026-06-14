@@ -4,6 +4,8 @@ from typing import Any
 
 import pandas as pd
 
+from src.visualization.plot_style import apply_plot_area_style, benchmark_label, method_color, method_label
+
 from .log_metric_common import a4_landscape_size, benchmark_output, ensure_matplotlib, metric_plot, subplot_grid_size
 
 
@@ -22,24 +24,25 @@ def write(df: pd.DataFrame, output_dir: Path) -> None:
     fig, axes = plt.subplots(rows, columns, figsize=a4_landscape_size(rows), squeeze=False, constrained_layout=True)
     last_image = None
     for axis, (benchmark, matrix) in zip(axes.flat, matrices):
-        last_image = draw_methods_heatmap(axis, matrix, str(benchmark), show_labels=False)
+        last_image = draw_methods_heatmap(axis, matrix, benchmark_label(benchmark), show_labels=False)
     for axis in list(axes.flat)[len(matrices):]:
         axis.axis("off")
     if last_image is not None:
         cbar = fig.colorbar(last_image, ax=axes.ravel().tolist(), ticks=[0, 1], shrink=0.72)
         cbar.set_ticklabels(["Not solved", "Solved"])
-        cbar.set_label("Solved status (0/1)")
-    fig.suptitle("Methods Solved Heatmap", fontsize=13)
+        cbar.set_label("Solved rate")
+    fig.suptitle("Methods solved heatmap", fontsize=13)
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=180)
     plt.close(fig)
 
     for benchmark, matrix in matrices:
-        fig, axis = plt.subplots(figsize=(max(8, len(matrix.columns) * 0.7), max(6, len(matrix.index) * 0.16)))
-        image = draw_methods_heatmap(axis, matrix, f"Methods Solved Heatmap - {benchmark}")
-        cbar = fig.colorbar(image, ax=axis, label="Solved status (0/1)", ticks=[0, 1], orientation="vertical")
+        fig_width = min(15, max(9, len(matrix.columns) * 0.16))
+        fig_height = min(8, max(4.8, len(matrix.index) * 0.42 + 1.2))
+        fig, axis = plt.subplots(figsize=(fig_width, fig_height), constrained_layout=True)
+        image = draw_methods_heatmap(axis, matrix, f"Methods solved heatmap - {benchmark_label(benchmark)}")
+        cbar = fig.colorbar(image, ax=axis, label="Solved rate", ticks=[0, 1], orientation="vertical")
         cbar.set_ticklabels(["Not solved", "Solved"])
-        fig.tight_layout()
         benchmark_path = benchmark_output(output, benchmark)
         benchmark_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(benchmark_path, dpi=180, bbox_inches="tight")
@@ -51,57 +54,55 @@ def methods_heatmap_matrix(df: pd.DataFrame, benchmark: Any) -> pd.DataFrame:
     if benchmark_df.empty:
         return pd.DataFrame()
     benchmark_df = benchmark_df.copy()
-    label_columns = [column for column in ("method", "split", "repeat") if column in benchmark_df.columns]
-    benchmark_df["run_label"] = benchmark_df.apply(lambda row: heatmap_run_label(row, label_columns), axis=1)
+    benchmark_df["_source_order"] = range(len(benchmark_df))
+    run_columns = [column for column in ("method", "split", "repeat") if column in benchmark_df.columns]
+    benchmark_df = benchmark_df.sort_values([*run_columns, "_source_order"])
+    benchmark_df["evaluation_index"] = benchmark_df.groupby(run_columns, dropna=False).cumcount() + 1
     plot_df = (
-        benchmark_df.groupby(["sample", "run_label"], dropna=False)["solved"]
+        benchmark_df.groupby(["method", "evaluation_index"], dropna=False)["solved"]
         .mean()
         .reset_index()
-        .pivot(index="sample", columns="run_label", values="solved")
-        .sort_index()
+        .pivot(index="method", columns="evaluation_index", values="solved")
     )
-    return plot_df.reindex(sorted(plot_df.columns), axis=1)
-
-
-def heatmap_run_label(row: pd.Series, label_columns: list[str]) -> str:
-    parts = []
-    for column in label_columns:
-        value = row.get(column)
-        if pd.isna(value):
-            continue
-        if column == "repeat":
-            try:
-                parts.append(f"r{int(value)}")
-            except (TypeError, ValueError):
-                parts.append(f"r{value}")
-        else:
-            parts.append(str(value))
-    return " / ".join(parts) if parts else "unknown"
+    method_order = sorted(plot_df.index, key=lambda value: method_label(value))
+    sample_order = sorted(plot_df.columns)
+    return plot_df.reindex(index=method_order, columns=sample_order)
 
 
 def draw_methods_heatmap(axis, matrix: pd.DataFrame, title: str, show_labels: bool = True):
-    image = axis.imshow(matrix.values, aspect="auto", cmap="viridis", vmin=0, vmax=1)
-    axis.set_title(title, fontsize=9 if show_labels else 8)
-    axis.set_xticks(range(len(matrix.columns)))
-    axis.set_xticklabels(matrix.columns, rotation=45, ha="right", fontsize=7 if show_labels else 5)
+    from matplotlib.colors import LinearSegmentedColormap
 
-    row_count = len(matrix.index)
-    if row_count <= 20:
-        y_positions = list(range(row_count))
+    cmap = LinearSegmentedColormap.from_list("solved_rate", ["#f3f6fb", "#6cc08b", "#1f7a4d"])
+    cmap.set_bad("#eef1f5")
+    image = axis.imshow(matrix.values.astype(float), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
+    axis.set_title(title, fontsize=9 if show_labels else 8)
+
+    column_count = len(matrix.columns)
+    if column_count <= 20:
+        x_positions = list(range(column_count))
     else:
-        step = math.ceil(row_count / 10)
-        y_positions = list(range(0, row_count, step))
+        step = math.ceil(column_count / (12 if show_labels else 6))
+        x_positions = list(range(0, column_count, step))
+    axis.set_xticks(x_positions)
+    axis.set_xticklabels([str(matrix.columns[position]) for position in x_positions], rotation=45, ha="right", fontsize=7 if show_labels else 5)
+
+    y_positions = list(range(len(matrix.index)))
     axis.set_yticks(y_positions)
-    axis.set_yticklabels([f"Run {int(matrix.index[position])}" for position in y_positions], fontsize=7 if show_labels else 5)
+    axis.set_yticklabels([method_label(method) for method in matrix.index], fontsize=8 if show_labels else 6)
+    for tick, method in zip(axis.get_yticklabels(), matrix.index):
+        tick.set_color(method_color(method))
+        tick.set_fontweight("semibold")
     axis.tick_params(which="both", bottom=True, left=True)
+    apply_plot_area_style(axis)
 
     if show_labels:
-        axis.set_xlabel("Method", fontsize=8)
-        axis.set_ylabel("Sample index (instance)", fontsize=8)
+        axis.set_xlabel("Evaluated instance", fontsize=8)
+        axis.set_ylabel("Method", fontsize=8)
 
-    if row_count <= 60 and len(matrix.columns) <= 20:
+    row_count = len(matrix.index)
+    if row_count <= 20 and column_count <= 60:
         axis.set_xticks([index - 0.5 for index in range(1, len(matrix.columns))], minor=True)
         axis.set_yticks([index - 0.5 for index in range(1, row_count)], minor=True)
-        axis.grid(which="minor", axis="both", color="white", linewidth=0.4)
+        axis.grid(which="minor", axis="both", color="white", linewidth=0.6)
         axis.tick_params(which="minor", bottom=False, left=False)
     return image

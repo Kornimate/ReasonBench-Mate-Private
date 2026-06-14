@@ -5,6 +5,13 @@ from typing import Any
 
 import pandas as pd
 
+from src.visualization.plot_style import (
+    apply_plot_area_style,
+    benchmark_label,
+    configure_matplotlib,
+    method_color,
+    method_label,
+)
 
 HIGHLIGHT_METHOD_COLORS = {
     "heterogeneous_foa": "#d55e00",
@@ -38,6 +45,7 @@ def ensure_matplotlib():
         import matplotlib
 
         matplotlib.use("Agg")
+        configure_matplotlib()
         import matplotlib.pyplot as plt
     except ImportError as exc:
         raise SystemExit("matplotlib is required for plotting. Install it with `pip install matplotlib`.") from exc
@@ -83,7 +91,7 @@ def a4_landscape_size(rows: int) -> tuple[float, float]:
 
 
 def bar_color(method: Any) -> str:
-    return HIGHLIGHT_METHOD_COLORS.get(str(method), DEFAULT_BAR_COLOR)
+    return method_color(method)
 
 
 def bar_colors(df: pd.DataFrame) -> list[str]:
@@ -104,15 +112,16 @@ def add_method_highlight_legend(axis, df: pd.DataFrame) -> None:
         return
     from matplotlib.patches import Patch
 
-    handles = [Patch(color=HIGHLIGHT_METHOD_COLORS[method], label=method) for method in present]
+    handles = [Patch(color=method_color(method), label=method_label(method)) for method in present]
     axis.legend(handles=handles, fontsize=6, loc="best")
 
 
 def draw_metric_bars(axis, labels: list[str], values: pd.Series, colors: list[str]) -> None:
     x_positions = list(range(len(labels)))
-    axis.bar(x_positions, values, color=colors)
+    axis.bar(x_positions, values, color=colors, edgecolor="white", linewidth=0.8)
     axis.set_xticks(x_positions)
     axis.set_xticklabels(labels, rotation=45, ha="right", rotation_mode="anchor")
+    apply_plot_area_style(axis)
 
 
 def benchmark_groups(df: pd.DataFrame):
@@ -140,11 +149,11 @@ def plot_bar_by_benchmark(df: pd.DataFrame, metric: str, title: str, output: Pat
     fig, axes = plt.subplots(rows, columns, figsize=a4_landscape_size(rows), squeeze=False)
     for axis, (benchmark, benchmark_df) in zip(axes.flat, groups):
         labels = [
-            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
+            "\n".join(method_label(getattr(row, column)) for column in label_columns if hasattr(row, column))
             for row in benchmark_df.itertuples()
         ]
         draw_metric_bars(axis, labels, benchmark_df[metric], bar_colors(benchmark_df))
-        axis.set_title(str(benchmark), fontsize=9)
+        axis.set_title(benchmark_label(benchmark), fontsize=9)
         axis.tick_params(axis="x", labelsize=7)
         axis.tick_params(axis="y", labelsize=7)
         axis.set_ylabel(y_label, fontsize=8)
@@ -159,13 +168,13 @@ def plot_bar_by_benchmark(df: pd.DataFrame, metric: str, title: str, output: Pat
 
     for benchmark, benchmark_df in groups:
         labels = [
-            "\n".join(str(getattr(row, column)) for column in label_columns if hasattr(row, column))
+            "\n".join(method_label(getattr(row, column)) for column in label_columns if hasattr(row, column))
             for row in benchmark_df.itertuples()
         ]
         plt.figure(figsize=(max(8, len(labels) * 0.55), 5))
         draw_metric_bars(plt.gca(), labels, benchmark_df[metric], bar_colors(benchmark_df))
         add_method_highlight_legend(plt.gca(), benchmark_df)
-        plt.title(f"{title} - {benchmark}")
+        plt.title(f"{title} - {benchmark_label(benchmark)}")
         plt.ylabel(y_label)
         plt.tight_layout()
         benchmark_path = benchmark_output(output, benchmark)

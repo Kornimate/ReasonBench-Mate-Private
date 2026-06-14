@@ -19,6 +19,20 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from src.visualization.plot_style import (
+    apply_plot_area_style,
+    benchmark_label,
+    benchmark_labels,
+    configure_matplotlib,
+    method_color,
+    method_colors,
+    method_label,
+    method_labels,
+    sentence_case,
+)
+
+configure_matplotlib()
+
 # Runtime solved thresholds from the benchmark environments.
 # src/tasks/mimic_rrs/environment.py: FINAL_SCORE_THRESHOLD = 3.5
 # src/tasks/mtsamples_procedures/environment.py: FINAL_SCORE_THRESHOLD = 3.5
@@ -618,8 +632,18 @@ def _format_axis(ax: plt.Axes, metric: str) -> None:
     elif "rate" in metric or "quality" in metric or metric == "harmonic_effectiveness":
         ax.set_ylabel("Score")
     else:
-        ax.set_ylabel(metric.replace("_", " ").title())
+        ax.set_ylabel(sentence_case(metric.replace("_", " ")))
     ax.grid(axis="y", alpha=0.25)
+    apply_plot_area_style(ax)
+
+
+def _bar_methods(ax: plt.Axes, methods: pd.Series | list[object], values: pd.Series | list[object], **kwargs):
+    methods_list = list(methods)
+    x = np.arange(len(methods_list))
+    bars = ax.bar(x, values, color=method_colors(methods_list), edgecolor="white", linewidth=0.9, **kwargs)
+    ax.set_xticks(x)
+    ax.set_xticklabels(method_labels(methods_list))
+    return bars
 
 
 def focus_benchmark_difficulty(benchmark: pd.DataFrame, focus_methods: list[str]) -> pd.DataFrame:
@@ -689,8 +713,8 @@ def plot_overall_metrics(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
         for metric, title, ascending in metrics:
             ordered = data.sort_values(metric, ascending=ascending)
             fig, ax = plt.subplots(figsize=(11, 5.8), constrained_layout=True)
-            ax.bar(ordered["method"], ordered[metric])
-            ax.set_title(f"{title} — {model}")
+            _bar_methods(ax, ordered["method"], ordered[metric])
+            ax.set_title(f"{title} - {model}")
             ax.set_xlabel("Method")
             ax.tick_params(axis="x", rotation=40)
             _format_axis(ax, metric)
@@ -722,8 +746,8 @@ def plot_focus_overall_metrics(summary: pd.DataFrame, focus_methods: list[str], 
         for metric, title, ascending in metrics:
             ordered = data.sort_values(metric, ascending=ascending)
             fig, ax = plt.subplots(figsize=(9, 5.4), constrained_layout=True)
-            ax.bar(ordered["method"], ordered[metric])
-            ax.set_title(f"{title} - Focus Methods - {model}")
+            _bar_methods(ax, ordered["method"], ordered[metric])
+            ax.set_title(f"{title} - focus methods - {model}")
             ax.set_xlabel("Method")
             ax.tick_params(axis="x", rotation=28)
             _format_axis(ax, metric)
@@ -760,7 +784,7 @@ def plot_basis_dashboard(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
         fig, axes = plt.subplots(2, 2, figsize=(16, 10), constrained_layout=True)
         axes_array = np.array(axes).reshape(-1)
         for ax, (metric, title) in zip(axes_array, metrics):
-            ax.bar(ordered["method"], ordered[metric])
+            _bar_methods(ax, ordered["method"], ordered[metric])
             ax.set_title(title)
             ax.tick_params(axis="x", rotation=38, labelsize=8)
             _format_axis(ax, metric)
@@ -772,7 +796,7 @@ def plot_basis_dashboard(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
                         label = f"{value:,.4f}"
                     ax.text(idx, value, label, ha="center", va="bottom", fontsize=7)
         fig.suptitle(
-            f"Basis Metrics Dashboard - {model}\n"
+            f"Basis metrics dashboard - {model}\n"
             "Methods ordered by macro normalized quality, solved instances, then total cost",
             fontsize=14,
         )
@@ -790,21 +814,29 @@ def plot_pareto_views(summary: pd.DataFrame, plots_dir: Path) -> list[Path]:
     for model, data in summary.groupby("model", dropna=False):
         for resource, xlabel in [("total_cost", "Total Cost (USD)"), ("total_calls", "Total Calls")]:
             fig, ax = plt.subplots(figsize=(9, 6), constrained_layout=True)
-            ax.scatter(data[resource], data["macro_normalized_quality"], s=65)
+            ax.scatter(
+                data[resource],
+                data["macro_normalized_quality"],
+                s=78,
+                color=method_colors(data["method"]),
+                edgecolors="white",
+                linewidths=0.8,
+            )
             for _, row in data.iterrows():
                 suffix = " *" if bool(row["pareto_optimal"]) else ""
                 ax.annotate(
-                    f"{row['method']}{suffix}",
+                    f"{method_label(row['method'])}{suffix}",
                     (row[resource], row["macro_normalized_quality"]),
                     xytext=(4, 5),
                     textcoords="offset points",
                     fontsize=8,
                 )
-            ax.set_title(f"Quality–Resource Trade-off — {model}\n* = Pareto-optimal")
+            ax.set_title(f"Quality-resource trade-off - {model}\n* = Pareto-optimal")
             ax.set_xlabel(xlabel)
             ax.set_ylabel("Macro Normalized Quality")
             ax.set_ylim(0, 1.05)
             ax.grid(alpha=0.25)
+            apply_plot_area_style(ax)
             path = pareto_dir / f"{_slug(model)}_quality_vs_{resource}.png"
             fig.savefig(path, dpi=180)
             plt.close(fig)
@@ -829,7 +861,7 @@ def plot_focus_per_benchmark(
             fig, axes = plt.subplots(1, len(metrics), figsize=(13, 4.8), constrained_layout=True)
             axes_array = np.array(axes).reshape(-1)
             for ax, (metric, title) in zip(axes_array, metrics):
-                ax.bar(values["method"], values[metric])
+                _bar_methods(ax, values["method"], values[metric])
                 ax.set_title(title)
                 ax.tick_params(axis="x", rotation=22)
                 _format_axis(ax, metric)
@@ -837,7 +869,7 @@ def plot_focus_per_benchmark(
                     label = f"{value:.4f}"
                     ax.text(i, value, label, ha="center", va="bottom", fontsize=8)
             fig.suptitle(
-                f"{bench_name} — {model}\nFocus-method difficulty rank {rank}/{len(ordered_benchmarks)}; "
+                f"{benchmark_label(bench_name)} - {model}\nFocus-method difficulty rank {rank}/{len(ordered_benchmarks)}; "
                 f"{attempts} evaluated instances per method",
                 fontsize=12,
             )
@@ -870,15 +902,23 @@ def plot_focus_dashboard(
             for index, method in enumerate(focus_methods):
                 vals = part[part["method"] == method].set_index("benchmark").reindex(order)[metric]
                 offset = (index - (len(focus_methods) - 1) / 2) * width
-                ax.bar(x + offset, vals, width=width, label=method)
+                ax.bar(
+                    x + offset,
+                    vals,
+                    width=width,
+                    label=method_label(method),
+                    color=method_color(method),
+                    edgecolor="white",
+                    linewidth=0.8,
+                )
             ax.set_title(title)
             ax.set_xticks(x)
-            ax.set_xticklabels(order, rotation=45, ha="right")
+            ax.set_xticklabels(benchmark_labels(order), rotation=45, ha="right")
             _format_axis(ax, metric)
             ax.legend()
         fig.suptitle(
-            f"Focus Methods Across Benchmarks — {model}\n"
-            "Benchmarks ordered hardest → easiest by mean focus-method normalized quality",
+            f"Focus methods across benchmarks - {model}\n"
+            "Benchmarks ordered hardest to easiest by mean focus-method normalized quality",
             fontsize=14,
         )
         path = dashboard_dir / f"{_slug(model)}_focus_methods_across_benchmarks.png"
@@ -911,13 +951,13 @@ def plot_all_method_benchmark_dashboards(benchmark: pd.DataFrame, plots_dir: Pat
                     .reindex(methods)
                     .reset_index()
                 )
-                ax.bar(values["method"], values[metric])
-                ax.set_title(f"{bench_name} (n={int(values['attempted_instances'].iloc[0])})")
+                _bar_methods(ax, values["method"], values[metric])
+                ax.set_title(f"{benchmark_label(bench_name)} (n={int(values['attempted_instances'].iloc[0])})")
                 ax.tick_params(axis="x", rotation=55, labelsize=7)
                 _format_axis(ax, metric)
             for ax in axes_array[len(benchmarks):]:
                 ax.axis("off")
-            fig.suptitle(f"{title} by Benchmark and Method — {model}", fontsize=15)
+            fig.suptitle(f"{title} by benchmark and method - {model}", fontsize=15)
             path = dashboard_dir / f"{_slug(model)}_all_benchmarks_subplots_{metric}.png"
             fig.savefig(path, dpi=180)
             plt.close(fig)
@@ -966,8 +1006,8 @@ def plot_all_method_benchmark_metric_plots(benchmark: pd.DataFrame, plots_dir: P
             for metric, title, ascending in metrics:
                 ordered = values.sort_values(metric, ascending=ascending, na_position="last")
                 fig, ax = plt.subplots(figsize=(11, 5.8), constrained_layout=True)
-                ax.bar(ordered["method"], ordered[metric])
-                ax.set_title(f"{title} by Method - {bench_name} - {model} ({attempts_label})")
+                _bar_methods(ax, ordered["method"], ordered[metric])
+                ax.set_title(f"{title} by method - {benchmark_label(bench_name)} - {model} ({attempts_label})")
                 ax.set_xlabel("Method")
                 ax.tick_params(axis="x", rotation=45)
                 _format_axis(ax, metric)
@@ -1014,7 +1054,7 @@ def plot_task_group_dashboards(benchmark: pd.DataFrame, plots_dir: Path) -> list
             axes_array = np.array(axes).reshape(-1)
             for ax, (metric, title) in zip(axes_array, metrics):
                 ordered = values.sort_values(metric, ascending=False, na_position="last").reset_index(drop=True)
-                ax.bar(ordered["method"], ordered[metric])
+                _bar_methods(ax, ordered["method"], ordered[metric])
                 ax.set_title(title)
                 ax.set_xlabel("Method")
                 ax.tick_params(axis="x", rotation=35, labelsize=8)
@@ -1026,7 +1066,7 @@ def plot_task_group_dashboards(benchmark: pd.DataFrame, plots_dir: Path) -> list
             present_benchmarks = [benchmark for benchmark in benchmarks if benchmark in set(group_part["benchmark"])]
             fig.suptitle(
                 f"{TASK_GROUP_TITLES.get(group_key, group_key.replace('_', ' ').title())} - {model}\n"
-                f"Benchmarks: {', '.join(present_benchmarks)}",
+                f"Benchmarks: {', '.join(benchmark_labels(present_benchmarks))}",
                 fontsize=13,
             )
             path = output_dir / f"{_slug(model)}_{group_key}.png"
@@ -1075,12 +1115,13 @@ def plot_classic_confidence_intervals(classic_ci: pd.DataFrame, plots_dir: Path)
         ax.errorbar(means, x, xerr=yerr, fmt="o", capsize=4)
         ax.axvline(0, color="black", linewidth=1, alpha=0.6)
         ax.set_yticks(x)
-        ax.set_yticklabels(ordered["benchmark"])
+        ax.set_yticklabels(benchmark_labels(ordered["benchmark"]))
         ax.invert_yaxis()
         ax.set_xlabel(f"Mean paired difference ({ordered['difference_direction'].iloc[0]})")
         ax.set_ylabel("Benchmark")
         ax.set_title(f"95% Confidence Intervals - {metric_titles.get(metric, metric)} - {model}")
         ax.grid(axis="x", alpha=0.25)
+        apply_plot_area_style(ax)
 
         for idx, row in ordered.iterrows():
             label = f"{row['mean_difference']:.4f}"
@@ -1145,11 +1186,12 @@ def plot_classic_confidence_interval_dashboard(classic_ci: pd.DataFrame, plots_d
             ax.errorbar(means, y, xerr=xerr, fmt="o", capsize=4)
             ax.axvline(0, color="black", linewidth=1, alpha=0.6)
             ax.set_yticks(y)
-            ax.set_yticklabels(data["benchmark"])
+            ax.set_yticklabels(benchmark_labels(data["benchmark"]))
             ax.invert_yaxis()
             ax.set_xlabel(f"Mean paired difference ({data['difference_direction'].iloc[0]})")
             ax.set_title(f"{metric_titles.get(metric, metric)} 95% CI")
             ax.grid(axis="x", alpha=0.25)
+            apply_plot_area_style(ax)
             for idx, row in data.iterrows():
                 ax.annotate(
                     f"{row['mean_difference']:.4f}",
@@ -1158,7 +1200,7 @@ def plot_classic_confidence_interval_dashboard(classic_ci: pd.DataFrame, plots_d
                     textcoords="offset points",
                     fontsize=8,
                 )
-        fig.suptitle(f"Confidence Intervals Across Benchmarks - {model}", fontsize=14)
+        fig.suptitle(f"Confidence intervals across benchmarks - {model}", fontsize=14)
         path = output_dir / f"{_slug(model)}_classic_ci_across_benchmarks.png"
         fig.savefig(path, dpi=180)
         plt.close(fig)

@@ -13,6 +13,15 @@ from omegaconf import OmegaConf
 import pandas as pd
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
+from src.visualization.plot_style import (
+    apply_plot_area_style,
+    benchmark_colors,
+    benchmark_label,
+    benchmark_labels,
+    configure_matplotlib,
+    sentence_case,
+)
+
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
 SENTENCE_PATTERN = re.compile(r"[^.!?\n]+")
@@ -438,6 +447,7 @@ def ensure_matplotlib():
         import matplotlib
 
         matplotlib.use("Agg")
+        configure_matplotlib()
         import matplotlib.pyplot as plt
     except ImportError as exc:
         raise SystemExit("matplotlib is required for plotting. Install it with `pip install matplotlib`.") from exc
@@ -490,17 +500,25 @@ def annotate_points(ax: Any, x_values: list[Any], y_values: list[float]) -> None
         )
 
 
+def set_benchmark_ticks(ax: Any, values: list[Any], rotation: int = 45) -> None:
+    ax.set_xticks(range(len(values)))
+    ax.set_xticklabels(benchmark_labels(values), rotation=rotation, ha="right")
+
+
 def plot_dataset_size(metrics: pd.DataFrame, output: Path) -> None:
     df = loaded_metrics(metrics)
     if df.empty:
         return
     plt = ensure_matplotlib()
     plt.figure(figsize=(10, 5))
-    bars = plt.bar(df["dataset"], df["num_instances"])
-    annotate_bars(plt.gca(), bars)
+    ax = plt.gca()
+    datasets = df["dataset"].tolist()
+    bars = ax.bar(range(len(datasets)), df["num_instances"], color=benchmark_colors(datasets), edgecolor="white", linewidth=0.9)
+    annotate_bars(ax, bars)
     plt.title("Dataset Size")
-    plt.ylabel("instances")
-    plt.xticks(rotation=45, ha="right")
+    plt.ylabel("Instances")
+    set_benchmark_ticks(ax, datasets)
+    apply_plot_area_style(ax)
     plt.tight_layout()
     plt.savefig(output, dpi=180)
     plt.close()
@@ -514,10 +532,13 @@ def plot_input_length(samples: pd.DataFrame, output: Path) -> None:
     data = [samples[samples["dataset"] == dataset]["input_word_count"].tolist() for dataset in datasets]
     plt.figure(figsize=(10, 5))
     try:
-        boxplot = plt.boxplot(data, tick_labels=datasets, showfliers=False)
+        boxplot = plt.boxplot(data, tick_labels=benchmark_labels(datasets), showfliers=False, patch_artist=True)
     except TypeError:
-        boxplot = plt.boxplot(data, labels=datasets, showfliers=False)
+        boxplot = plt.boxplot(data, labels=benchmark_labels(datasets), showfliers=False, patch_artist=True)
     ax = plt.gca()
+    for patch, color in zip(boxplot["boxes"], benchmark_colors(datasets)):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.75)
     for i, median_line in enumerate(boxplot["medians"], start=1):
         median_value = median_line.get_ydata()[0]
         ax.annotate(
@@ -530,8 +551,9 @@ def plot_input_length(samples: pd.DataFrame, output: Path) -> None:
             fontsize=7,
         )
     plt.title("Input Length Distribution")
-    plt.ylabel("input words")
+    plt.ylabel("Input words")
     plt.xticks(rotation=45, ha="right")
+    apply_plot_area_style(ax)
     plt.tight_layout()
     plt.savefig(output, dpi=180)
     plt.close()
@@ -544,17 +566,26 @@ def plot_answer_length_vs_entropy(metrics: pd.DataFrame, output: Path) -> None:
     plt = ensure_matplotlib()
     plt.figure(figsize=(8, 5))
     sizes = [max(30, value * 2) for value in df["num_instances"]]
-    plt.scatter(df["median_answer_words"], df["normalized_answer_entropy"], s=sizes, alpha=0.75)
+    plt.scatter(
+        df["median_answer_words"],
+        df["normalized_answer_entropy"],
+        s=sizes,
+        c=benchmark_colors(df["dataset"]),
+        alpha=0.82,
+        edgecolors="white",
+        linewidths=0.7,
+    )
     for row in df.itertuples():
         label = (
-            f"{row.dataset}\n"
+            f"{benchmark_label(row.dataset)}\n"
             f"{format_metric_value(row.median_answer_words)}, "
             f"{format_metric_value(row.normalized_answer_entropy)}"
         )
         plt.annotate(label, (row.median_answer_words, row.normalized_answer_entropy), fontsize=7)
     plt.title("Answer Length vs Answer-Space Entropy")
-    plt.xlabel("median answer words")
-    plt.ylabel("normalized answer entropy")
+    plt.xlabel("Median answer words")
+    plt.ylabel("Normalized answer entropy")
+    apply_plot_area_style(plt.gca())
     plt.tight_layout()
     plt.savefig(output, dpi=180)
     plt.close()
@@ -572,25 +603,26 @@ def plot_lexical_diversity(metrics: pd.DataFrame, output: Path) -> None:
         df["total_input_tokens"],
         df["input_vocab_size"],
         s=sizes,
-        color="#4c78a8",
+        c=benchmark_colors(df["dataset"]),
         alpha=0.8,
         edgecolors="white",
         linewidths=0.7,
     )
     for row in df.itertuples():
         ax.annotate(
-            row.dataset,
+            benchmark_label(row.dataset),
             (row.total_input_tokens, row.input_vocab_size),
             xytext=(5, 4),
             textcoords="offset points",
             fontsize=7,
         )
     ax.set_title("Input Lexical Diversity Components")
-    ax.set_xlabel("total input tokens")
-    ax.set_ylabel("unique input tokens")
+    ax.set_xlabel("Total input tokens")
+    ax.set_ylabel("Unique input tokens")
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.grid(True, which="both", linewidth=0.4, alpha=0.35)
+    apply_plot_area_style(ax)
     plt.tight_layout()
     plt.savefig(output, dpi=180)
     plt.close()
@@ -602,12 +634,17 @@ def plot_lexical_diversity_ttr(metrics: pd.DataFrame, output: Path) -> None:
         return
     plt = ensure_matplotlib()
     plt.figure(figsize=(10, 5))
-    plt.plot(df["dataset"], df["corpus_input_lexical_diversity"], marker="o")
-    annotate_points(plt.gca(), df["dataset"].tolist(), df["corpus_input_lexical_diversity"].tolist())
+    ax = plt.gca()
+    datasets = df["dataset"].tolist()
+    x = list(range(len(datasets)))
+    plt.plot(x, df["corpus_input_lexical_diversity"], color="#555555", linewidth=1.4, alpha=0.65)
+    plt.scatter(x, df["corpus_input_lexical_diversity"], color=benchmark_colors(datasets), zorder=3)
+    annotate_points(ax, x, df["corpus_input_lexical_diversity"].tolist())
     plt.title("Input Lexical Diversity")
-    plt.ylabel("type-token ratio")
+    plt.ylabel("Type-token ratio")
     plt.ylim(0, min(1.05, max(df["corpus_input_lexical_diversity"]) + 0.1))
-    plt.xticks(rotation=45, ha="right")
+    set_benchmark_ticks(ax, datasets)
+    apply_plot_area_style(ax)
     plt.tight_layout()
     plt.savefig(output, dpi=180)
     plt.close()
@@ -619,16 +656,21 @@ def plot_vocabulary_profile(metrics: pd.DataFrame, output: Path) -> None:
         return
     plt = ensure_matplotlib()
     fig, ax1 = plt.subplots(figsize=(10, 5))
-    bars = ax1.bar(df["dataset"], df["input_vocab_size"], color="#4c78a8")
+    datasets = df["dataset"].tolist()
+    x = list(range(len(datasets)))
+    bars = ax1.bar(x, df["input_vocab_size"], color=benchmark_colors(datasets), edgecolor="white", linewidth=0.9)
     annotate_bars(ax1, bars)
-    ax1.set_ylabel("unique input tokens")
-    ax1.tick_params(axis="x", rotation=45)
+    ax1.set_ylabel("Unique input tokens")
+    set_benchmark_ticks(ax1, datasets)
 
     ax2 = ax1.twinx()
-    ax2.plot(df["dataset"], df["input_hapax_share"], color="#f58518", marker="o")
-    annotate_points(ax2, df["dataset"].tolist(), df["input_hapax_share"].tolist())
-    ax2.set_ylabel("hapax share")
+    ax2.plot(x, df["input_hapax_share"], color="#555555", linewidth=1.4, alpha=0.65)
+    ax2.scatter(x, df["input_hapax_share"], color=benchmark_colors(datasets), zorder=3)
+    annotate_points(ax2, x, df["input_hapax_share"].tolist())
+    ax2.set_ylabel("Hapax share")
     ax2.set_ylim(0, min(1.05, max(df["input_hapax_share"]) + 0.1))
+    apply_plot_area_style(ax1)
+    apply_plot_area_style(ax2)
 
     plt.title("Input Vocabulary Profile")
     fig.tight_layout()
@@ -642,16 +684,21 @@ def plot_sentence_and_stopword_profile(metrics: pd.DataFrame, output: Path) -> N
         return
     plt = ensure_matplotlib()
     fig, ax1 = plt.subplots(figsize=(10, 5))
-    bars = ax1.bar(df["dataset"], df["mean_input_sentence_words"], color="#54a24b")
+    datasets = df["dataset"].tolist()
+    x = list(range(len(datasets)))
+    bars = ax1.bar(x, df["mean_input_sentence_words"], color=benchmark_colors(datasets), edgecolor="white", linewidth=0.9)
     annotate_bars(ax1, bars)
-    ax1.set_ylabel("mean sentence words")
-    ax1.tick_params(axis="x", rotation=45)
+    ax1.set_ylabel("Mean sentence words")
+    set_benchmark_ticks(ax1, datasets)
 
     ax2 = ax1.twinx()
-    ax2.plot(df["dataset"], df["input_stopword_share"], color="#e45756", marker="o")
-    annotate_points(ax2, df["dataset"].tolist(), df["input_stopword_share"].tolist())
-    ax2.set_ylabel("stopword share")
+    ax2.plot(x, df["input_stopword_share"], color="#555555", linewidth=1.4, alpha=0.65)
+    ax2.scatter(x, df["input_stopword_share"], color=benchmark_colors(datasets), zorder=3)
+    annotate_points(ax2, x, df["input_stopword_share"].tolist())
+    ax2.set_ylabel("Stopword share")
     ax2.set_ylim(0, min(1.05, max(df["input_stopword_share"]) + 0.1))
+    apply_plot_area_style(ax1)
+    apply_plot_area_style(ax2)
 
     plt.title("Input Sentence and Function-Word Profile")
     fig.tight_layout()
@@ -680,9 +727,9 @@ def plot_complexity_heatmap(metrics: pd.DataFrame, output: Path) -> None:
     plt = ensure_matplotlib()
     plt.figure(figsize=(9, max(4, len(df) * 0.45)))
     plt.imshow(normalized, aspect="auto", cmap="viridis")
-    plt.colorbar(label="min-max normalized")
-    plt.yticks(range(len(df)), df["dataset"])
-    plt.xticks(range(len(cols)), cols, rotation=35, ha="right")
+    plt.colorbar(label="Min-max normalized")
+    plt.yticks(range(len(df)), benchmark_labels(df["dataset"]))
+    plt.xticks(range(len(cols)), [sentence_case(col.replace("_", " ")) for col in cols], rotation=35, ha="right")
     ax = plt.gca()
     for row_idx in range(len(df)):
         for col_idx, col in enumerate(cols):
@@ -698,6 +745,7 @@ def plot_complexity_heatmap(metrics: pd.DataFrame, output: Path) -> None:
                 fontsize=6,
             )
     plt.title("Dataset Complexity Profile")
+    apply_plot_area_style(ax)
     plt.tight_layout()
     plt.savefig(output, dpi=180)
     plt.close()
