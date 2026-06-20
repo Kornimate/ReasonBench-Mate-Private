@@ -157,10 +157,11 @@ class MethodReagents(Method):
             agent_index = self._sample_agent_index(record.depth)
             spec = self.step_agents[agent_index]
             agent_indices.append(agent_index)
+            influence_parent_id = getattr(record, "influence_parent_id", getattr(record, "visual_id", f"step{step}-parent{i}"))
             self._emit_visualization("model_call_started", {
                 "idx": idx,
                 "step": step,
-                "parent_id": getattr(record, "visual_id", f"step{step}-parent{i}"),
+                "parent_id": influence_parent_id,
                 "pending_id": f"step{step}-pending{i}",
                 "agent_index": agent_index,
                 "agent_type": spec.get("agent_type", f"agent_{agent_index}"),
@@ -179,16 +180,24 @@ class MethodReagents(Method):
         action_batches = await asyncio.gather(*coroutines)
         new_records = []
         for i, (record, actions) in enumerate(zip(records, action_batches)):
-            parent_id = getattr(record, "visual_id", f"step{step}-parent{i}")
+            parent_id = getattr(record, "influence_parent_id", getattr(record, "visual_id", f"step{step}-parent{i}"))
             child_id = f"step{step}-state{i}"
             if not actions:
                 new_record = SearchRecord(state=record.state, value=record.value, depth=record.depth + 1)
                 object.__setattr__(new_record, "visual_id", child_id)
+                object.__setattr__(new_record, "influence_parent_id", parent_id)
                 new_records.append(new_record)
+                state_payload = self._state_payload(record.state, child_id, parent_id, record.value, "fallback")
+                state_payload["serialized"] = {
+                    **state_payload["serialized"],
+                    "agent_index": agent_indices[i],
+                    "agent_type": self.step_agents[agent_indices[i]].get("agent_type", f"agent_{agent_indices[i]}"),
+                    "influence_parent_id": parent_id,
+                }
                 self._emit_visualization("state_created", {
                     "idx": idx,
                     "step": step,
-                    "state": self._state_payload(record.state, child_id, parent_id, record.value, "fallback"),
+                    "state": state_payload,
                 })
                 continue
             try:
@@ -197,11 +206,19 @@ class MethodReagents(Method):
                 new_state = record.state
             new_record = SearchRecord(state=new_state, value=record.value, depth=record.depth + 1)
             object.__setattr__(new_record, "visual_id", child_id)
+            object.__setattr__(new_record, "influence_parent_id", parent_id)
             new_records.append(new_record)
+            state_payload = self._state_payload(new_state, child_id, parent_id, record.value, "generated")
+            state_payload["serialized"] = {
+                **state_payload["serialized"],
+                "agent_index": agent_indices[i],
+                "agent_type": self.step_agents[agent_indices[i]].get("agent_type", f"agent_{agent_indices[i]}"),
+                "influence_parent_id": parent_id,
+            }
             self._emit_visualization("state_created", {
                 "idx": idx,
                 "step": step,
-                "state": self._state_payload(new_state, child_id, parent_id, record.value, "generated"),
+                "state": state_payload,
             })
 
         return new_records, agent_indices, action_batches
@@ -375,10 +392,18 @@ class MethodReagents(Method):
         for j, (record, source_index) in enumerate(zip(records, resampled_indices)):
             source_id = visited_states[source_index][0]
             object.__setattr__(record, "visual_id", f"step{step}-resampled{j}")
+            object.__setattr__(record, "influence_parent_id", source_id)
+            state_payload = self._state_payload(record.state, getattr(record, "visual_id"), source_id, record.value, "resampled")
+            state_payload["serialized"] = {
+                **state_payload["serialized"],
+                "actual_resample_source_id": source_id,
+                "influence_parent_id": source_id,
+            }
             self._emit_visualization("state_resampled", {
                 "step": step,
                 "source_id": source_id,
-                "state": self._state_payload(record.state, getattr(record, "visual_id"), source_id, record.value, "resampled"),
+                "actual_source_id": source_id,
+                "state": state_payload,
             })
         return records, visited_states
 
@@ -424,6 +449,7 @@ class MethodReagents(Method):
         ]
         for i, record in enumerate(records):
             object.__setattr__(record, "visual_id", f"init-{i}")
+            object.__setattr__(record, "influence_parent_id", f"init-{i}")
         visited_states: list[tuple[str, float, State]] = [("root", self.origin, state)]
 
         self._emit_visualization("run_started", {

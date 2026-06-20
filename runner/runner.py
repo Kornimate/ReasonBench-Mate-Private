@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import json
 import os
 import queue
 import re
@@ -417,7 +418,7 @@ def show_payload_dialog(parent, title, payload):
         if is_markdown(content):
             configure_markdown_tags(text)
             render_markdown(text, content)
-            metadata = str(payload.get("serialized") or payload)
+            metadata = format_metadata(payload)
             if metadata:
                 text.insert(tk.END, "\n\nState metadata\n", "heading2")
                 text.insert(tk.END, metadata, "metadata")
@@ -425,9 +426,27 @@ def show_payload_dialog(parent, title, payload):
             return
         lines.append(content)
         lines.append("")
-        lines.append(str(payload.get("serialized") or payload))
+        lines.append("State metadata")
+        lines.append(format_metadata(payload))
     text.insert("1.0", "\n".join(lines))
     text.configure(state=tk.DISABLED)
+
+
+def format_metadata(payload):
+    metadata = payload.get("serialized") or payload
+    return json.dumps(to_jsonable(metadata), indent=2, sort_keys=True, ensure_ascii=True)
+
+
+def to_jsonable(value):
+    if isinstance(value, dict):
+        return {str(key): to_jsonable(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_jsonable(item) for item in value]
+    if isinstance(value, set):
+        return sorted(to_jsonable(item) for item in value)
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def is_markdown(content):
@@ -535,12 +554,12 @@ class RunnerApp:
 
         header = ttk.Frame(shell, style="App.TFrame")
         header.pack(fill=tk.X, padx=18, pady=(16, 10))
-        ttk.Label(header, text="BenchmarkRW ReAgents Runner", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(
-            header,
-            text=f"{RUNNER_BENCHMARK} / {RUNNER_SPLIT} with {RUNNER_METHOD}",
-            style="Subtitle.TLabel",
-        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(header, text="ReAgents Runner", style="Title.TLabel").pack(anchor="w")
+        # ttk.Label(
+        #     header,
+        #     text=f"{RUNNER_BENCHMARK} / {RUNNER_SPLIT} with {RUNNER_METHOD}",
+        #     style="Subtitle.TLabel",
+        # ).pack(anchor="w", pady=(2, 0))
 
         top = ttk.Frame(shell, style="Panel.TFrame")
         top.pack(fill=tk.X, padx=18, pady=(0, 12))

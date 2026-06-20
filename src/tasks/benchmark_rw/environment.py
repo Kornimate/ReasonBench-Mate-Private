@@ -17,7 +17,7 @@ from ...typedefs import Environment, MAX_SEED, Request
 
 cache = Cache(".cache/benchmark_rw_jury_cache")
 
-FINAL_SCORE_THRESHOLD = 3.5
+FINAL_SCORE_THRESHOLD = 4.75
 DEFAULT_JURY_SCORE = 1.0
 
 

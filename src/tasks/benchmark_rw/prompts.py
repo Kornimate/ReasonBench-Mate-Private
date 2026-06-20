@@ -80,6 +80,7 @@ Selected candidates:
 
 
 evaluate = """You are judging a candidate solution to a real-world problem.
+Be strict and use the full scoring range. Generic, plausible advice should not receive a high score.
 
 Problem:
 {question}
@@ -89,6 +90,15 @@ Score the solution from 0.0 to 1.0 using these criteria:
 - completeness relative to the user's request
 - practical usefulness and feasibility
 - clarity and appropriate caveats
+- specificity to this exact problem
+- clear sequencing, tradeoffs, and failure modes when relevant
+
+Scoring guide:
+- 0.0-0.2: unusable or mostly irrelevant
+- 0.3-0.5: partially useful but vague, generic, or missing major parts
+- 0.6-0.75: solid but still incomplete or not well tailored
+- 0.8-0.9: strong, actionable, and mostly complete
+- 0.95-1.0: exceptional; hard to substantially improve
 
 First give a short analysis, then end with: Score: <number>
 
@@ -132,6 +142,9 @@ self_evaluate_answer = self_evaluate_step
 
 JURY_PROMPT = """You are tasked with evaluating the quality of a generated solution to a real-world problem.
 Your goal is to assess how well the response solves the user's request.
+Be a strict judge. A response should only receive very high scores if it is tailored to the specific request,
+practically actionable, complete enough to execute, and clear about important tradeoffs or assumptions.
+Generic but plausible advice should receive middling scores, even if it is not wrong.
 
 The user's request will be provided in these tags:
 <user_request>
@@ -143,19 +156,35 @@ The response will be provided in these tags:
 {RESPONSE}
 </response>
 
-Carefully analyze the <response>.
+Carefully analyze the <response>. Use the full 1-5 range:
+- 1 = unusable, mostly wrong, or does not answer the request
+- 2 = weak, vague, missing major parts, or likely to mislead
+- 3 = acceptable but generic, incomplete, or only partly actionable
+- 4 = strong and mostly complete, but still has noticeable gaps or weak tailoring
+- 5 = excellent, specific, actionable, well scoped, and robust to likely edge cases
+
+Do not give a 5 unless the response would be hard to substantially improve.
 For each category, rate the Response on a scale of 1 to 5 (1 = very poor, 5 = excellent),
 and provide a short justification for your score.
 
 Evaluation Criteria:
 Accuracy (1-5)
 - Is the reasoning sound, factual, and consistent with the user's request?
+- Does it avoid unsupported assumptions or oversimplified claims?
 
 Completeness (1-5)
 - Does the response address the important parts of the problem and include necessary caveats or assumptions?
+- Does it include enough concrete steps, priorities, and failure modes for the user to act on it?
 
 Clarity (1-5)
 - Is the response understandable, well organized, and directly useful?
+- Is it specific rather than boilerplate?
+
+Important scoring guidance:
+- A first-pass list of reasonable best practices is usually a 3, not a 5.
+- A good but generic answer is usually a 3 or 4.
+- Reserve 5 for answers that are highly tailored to the exact problem and include practical sequencing,
+  tradeoffs, risks, and what to do if assumptions fail.
 
 Output Format:
 Output the evaluation as a single valid JSON object matching the following structure:

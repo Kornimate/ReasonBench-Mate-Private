@@ -35,14 +35,14 @@ heterogeneous_foa:
 reagents:
   width: 4
   num_steps: 6
-  max_value: 10
+  max_value: 1
   k: 2
   alpha: 0.2
   backtrack: 0.5
   resampling: "linear_filtered"
   min_steps: 1
   num_evaluations: 3
-  origin: 20
+  origin: 0.5
   difficulty_agent_type: "population"
   step_agents:
     - agent_type: "act"
@@ -53,14 +53,14 @@ reagents:
 reagents_v2comp:
   width: 4
   num_steps: 6
-  max_value: 10
+  max_value: 1
   k: 2
   alpha: 0.2
   backtrack: 0.5
   resampling: "linear_filtered"
   min_steps: 1
   num_evaluations: 3
-  origin: 20
+  origin: 0.5
   difficulty_agent_type: "population"
   step_agents:
     - agent_type: "act"
@@ -74,14 +74,14 @@ reagents_v2comp:
 reagents_v2tour:
   width: 4
   num_steps: 6
-  max_value: 10
+  max_value: 1
   k: 2
   alpha: 0.2
   backtrack: 0.5
   resampling: "linear_filtered"
   min_steps: 1
   num_evaluations: 3
-  origin: 20
+  origin: 0.5
   difficulty_agent_type: "population"
   step_agents:
     - agent_type: "act"
