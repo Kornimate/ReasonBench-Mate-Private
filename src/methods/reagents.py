@@ -74,6 +74,31 @@ class MethodReagents(Method):
         }
 
         self.priors = np.ones((self.num_steps, len(self.step_agents))) / max(len(self.step_agents), 1)
+        self.visualization_callback = getattr(config, "visualization_callback", None)
+
+    def _emit_visualization(self, event_type: str, payload: dict) -> None:
+        callback = getattr(self, "visualization_callback", None)
+        if callback is None:
+            return
+        try:
+            callback({"type": event_type, **payload})
+        except Exception:
+            pass
+
+    def _state_payload(self, state: State, record_id: str, parent_id: str | None = None, value: float | None = None, status: str = "ready") -> dict:
+        try:
+            serialized = state.serialize()
+        except Exception:
+            serialized = {"state": str(state)}
+        return {
+            "id": record_id,
+            "parent_id": parent_id,
+            "status": status,
+            "value": value,
+            "step_count": len(getattr(state, "steps", []) or []),
+            "current_state": getattr(state, "current_state", ""),
+            "serialized": serialized,
+        }
 
     def _normalize_score(self, score) -> float:
         if isinstance(score, (int, float)):
@@ -132,6 +157,14 @@ class MethodReagents(Method):
             agent_index = self._sample_agent_index(record.depth)
             spec = self.step_agents[agent_index]
             agent_indices.append(agent_index)
+            self._emit_visualization("model_call_started", {
+                "idx": idx,
+                "step": step,
+                "parent_id": getattr(record, "visual_id", f"step{step}-parent{i}"),
+                "pending_id": f"step{step}-pending{i}",
+                "agent_index": agent_index,
+                "agent_type": spec.get("agent_type", f"agent_{agent_index}"),
+            })
             coroutines.append(
                 spec["agent"].act(
                     model=self.model,
@@ -145,15 +178,31 @@ class MethodReagents(Method):
 
         action_batches = await asyncio.gather(*coroutines)
         new_records = []
-        for record, actions in zip(records, action_batches):
+        for i, (record, actions) in enumerate(zip(records, action_batches)):
+            parent_id = getattr(record, "visual_id", f"step{step}-parent{i}")
+            child_id = f"step{step}-state{i}"
             if not actions:
-                new_records.append(SearchRecord(state=record.state, value=record.value, depth=record.depth + 1))
+                new_record = SearchRecord(state=record.state, value=record.value, depth=record.depth + 1)
+                object.__setattr__(new_record, "visual_id", child_id)
+                new_records.append(new_record)
+                self._emit_visualization("state_created", {
+                    "idx": idx,
+                    "step": step,
+                    "state": self._state_payload(record.state, child_id, parent_id, record.value, "fallback"),
+                })
                 continue
             try:
                 new_state = self.env.step(record.state, actions[0])
             except Exception:
                 new_state = record.state
-            new_records.append(SearchRecord(state=new_state, value=record.value, depth=record.depth + 1))
+            new_record = SearchRecord(state=new_state, value=record.value, depth=record.depth + 1)
+            object.__setattr__(new_record, "visual_id", child_id)
+            new_records.append(new_record)
+            self._emit_visualization("state_created", {
+                "idx": idx,
+                "step": step,
+                "state": self._state_payload(new_state, child_id, parent_id, record.value, "generated"),
+            })
 
         return new_records, agent_indices, action_batches
 
@@ -171,9 +220,16 @@ class MethodReagents(Method):
         pending_indices = []
 
         for i, record in enumerate(records):
+            self._emit_visualization("evaluation_started", {
+                "idx": idx,
+                "step": step,
+                "evaluator_id": f"step{step}-eval{i}",
+                "state_id": getattr(record, "visual_id", f"step{step}-state{i}"),
+            })
             if self.env.is_final(record.state):
                 terminal_indices.append(i)
-            if self.env.evaluate(record.state)[1] == 1:
+            env_solved, _ = self.env.evaluate(record.state)
+            if env_solved:
                 solved_indices.append(i)
                 terminal_indices.append(i)
                 continue
@@ -197,11 +253,22 @@ class MethodReagents(Method):
         updated_records = []
         for i, record in enumerate(records):
             if i in solved_indices:
-                updated_records.append(SearchRecord(record.state, self.max_value, record.depth, 0.0))
+                updated_record = SearchRecord(record.state, self.max_value, record.depth, 0.0)
             elif i in terminal_indices:
-                updated_records.append(SearchRecord(record.state, 0.0, record.depth, 0.0))
+                updated_record = SearchRecord(record.state, 0.0, record.depth, 0.0)
             else:
-                updated_records.append(SearchRecord(record.state, score_map.get(i, record.value), record.depth, 0.0))
+                updated_record = SearchRecord(record.state, score_map.get(i, record.value), record.depth, 0.0)
+            object.__setattr__(updated_record, "visual_id", getattr(record, "visual_id", f"step{step}-state{i}"))
+            updated_records.append(updated_record)
+            self._emit_visualization("evaluation_completed", {
+                "idx": idx,
+                "step": step,
+                "evaluator_id": f"step{step}-eval{i}",
+                "state_id": getattr(updated_record, "visual_id", f"step{step}-state{i}"),
+                "score": updated_record.value,
+                "solved": i in solved_indices,
+                "terminal": i in terminal_indices,
+            })
 
         return updated_records, sorted(set(terminal_indices)), solved_indices
 
@@ -290,7 +357,7 @@ class MethodReagents(Method):
 
         for i, record in enumerate(candidate_records):
             if i not in terminal_indices:
-                visited_states.append((f"{i}.{step}", record.value, record.state))
+                visited_states.append((getattr(record, "visual_id", f"{i}.{step}"), record.value, record.state))
 
         if not visited_states:
             return candidate_records, visited_states
@@ -305,6 +372,14 @@ class MethodReagents(Method):
             )
             for resampled_state, source_index in zip(resampled_states, resampled_indices)
         ]
+        for j, (record, source_index) in enumerate(zip(records, resampled_indices)):
+            source_id = visited_states[source_index][0]
+            object.__setattr__(record, "visual_id", f"step{step}-resampled{j}")
+            self._emit_visualization("state_resampled", {
+                "step": step,
+                "source_id": source_id,
+                "state": self._state_payload(record.state, getattr(record, "visual_id"), source_id, record.value, "resampled"),
+            })
         return records, visited_states
 
     def _log_final_records(self, idx: int, records: list[SearchRecord], label: str) -> None:
@@ -347,7 +422,19 @@ class MethodReagents(Method):
             )
             for _ in range(width)
         ]
-        visited_states: list[tuple[str, float, State]] = [("INIT", self.origin, state)]
+        for i, record in enumerate(records):
+            object.__setattr__(record, "visual_id", f"init-{i}")
+        visited_states: list[tuple[str, float, State]] = [("root", self.origin, state)]
+
+        self._emit_visualization("run_started", {
+            "idx": idx,
+            "width": width,
+            "root": self._state_payload(state, "root", None, self.origin, "root"),
+            "states": [
+                self._state_payload(record.state, getattr(record, "visual_id"), "root", record.value, "ready")
+                for record in records
+            ],
+        })
 
         log_section("ReAgents Method Information:")
         for step in range(self.num_steps):
@@ -390,6 +477,14 @@ class MethodReagents(Method):
             if solved_indices:
                 solved_records = [new_records[i] for i in solved_indices]
                 self._log_final_records(idx, solved_records, "REAGENTS_FINAL_SOLVED")
+                self._emit_visualization("run_completed", {
+                    "idx": idx,
+                    "solved": True,
+                    "states": [
+                        self._state_payload(record.state, getattr(record, "visual_id", f"solved-{i}"), None, record.value, "solved")
+                        for i, record in enumerate(solved_records)
+                    ],
+                })
                 log_section_end()
                 return [record.state for record in solved_records]
 
@@ -402,5 +497,13 @@ class MethodReagents(Method):
                 break
 
         self._log_final_records(idx, records, "REAGENTS_FINAL_RECORDS")
+        self._emit_visualization("run_completed", {
+            "idx": idx,
+            "solved": False,
+            "states": [
+                self._state_payload(record.state, getattr(record, "visual_id", f"final-{i}"), None, record.value, "final")
+                for i, record in enumerate(records)
+            ] if records else [self._state_payload(state, "root", None, 0.0, "final")],
+        })
         log_section_end()
         return [record.state for record in records] if records else [state]
